@@ -93,6 +93,7 @@ import com.smartdevicelink.proxy.rpc.enums.SystemCapabilityType;
 import com.smartdevicelink.proxy.rpc.enums.TextAlignment;
 import com.smartdevicelink.proxy.rpc.enums.TouchType;
 import com.smartdevicelink.proxy.rpc.enums.UpdateMode;
+import com.smartdevicelink.proxy.rpc.listeners.OnMultipleRequestListener;
 import com.smartdevicelink.proxy.rpc.listeners.OnPutFileUpdateListener;
 import com.smartdevicelink.proxy.rpc.listeners.OnRPCNotificationListener;
 import com.smartdevicelink.proxy.rpc.listeners.OnRPCResponseListener;
@@ -108,6 +109,7 @@ import com.smartdevicelink.trace.enums.InterfaceActivityDirection;
 import com.smartdevicelink.transport.BaseTransportConfig;
 import com.smartdevicelink.transport.SiphonServer;
 import com.smartdevicelink.transport.enums.TransportType;
+import com.smartdevicelink.util.CorrelationIdGenerator;
 import com.smartdevicelink.util.DebugTool;
 
 
@@ -130,7 +132,7 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 						UNREGISTER_APP_INTERFACE_CORRELATION_ID = 65530,
 						POLICIES_CORRELATION_ID = 65535;
 	
-	// Sdlhronization Objects
+	// Sdl Synchronization Objects
 	private static final Object CONNECTION_REFERENCE_LOCK = new Object(),
 								INCOMING_MESSAGE_QUEUE_THREAD_LOCK = new Object(),
 								OUTGOING_MESSAGE_QUEUE_THREAD_LOCK = new Object(),
@@ -1537,7 +1539,9 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 						if (message.getJsonSize() > 0) {
 							final Hashtable<String, Object> mhash = JsonRPCMarshaller.unmarshall(message.getData());
 							//hashTemp.put(Names.parameters, mhash.get(Names.parameters));
-							hashTemp.put(RPCMessage.KEY_PARAMETERS, mhash);
+							if (mhash != null) {
+								hashTemp.put(RPCMessage.KEY_PARAMETERS, mhash);
+							}
 						}
 
 						String functionName = FunctionID.getFunctionName(message.getFunctionID());
@@ -3025,19 +3029,18 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 				
 				msg.setFirstRun(firstTimeFull);
 				if (msg.getHmiLevel() == HMILevel.HMI_FULL) firstTimeFull = false;
-				
-				if (msg.getHmiLevel() != _hmiLevel || msg.getAudioStreamingState() != _audioStreamingState) {
-					_hmiLevel = msg.getHmiLevel();
-					_audioStreamingState = msg.getAudioStreamingState();
 
-					if (_callbackToUIThread) {
-						// Run in UI thread
-						_mainUIHandler.post(new Runnable() {
-							@Override
-							public void run() {
-								_proxyListener.onOnHMIStatus(msg);
-								_proxyListener.onOnLockScreenNotification(sdlSession.getLockScreenMan().getLockObj());
-								onRPCNotificationReceived(msg);
+				_hmiLevel = msg.getHmiLevel();
+				_audioStreamingState = msg.getAudioStreamingState();
+
+				if (_callbackToUIThread) {
+					// Run in UI thread
+					_mainUIHandler.post(new Runnable() {
+						@Override
+						public void run() {
+							_proxyListener.onOnHMIStatus(msg);
+							_proxyListener.onOnLockScreenNotification(sdlSession.getLockScreenMan().getLockObj());
+							onRPCNotificationReceived(msg);
 							}
 						});
 					} else {
@@ -3045,7 +3048,6 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 						_proxyListener.onOnLockScreenNotification(sdlSession.getLockScreenMan().getLockObj());
 						onRPCNotificationReceived(msg);
 					}
-				}				
 			} else if (functionName.equals(FunctionID.ON_COMMAND.toString())) {
 				// OnCommand
 				
@@ -3425,12 +3427,124 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 
 		SdlTrace.logProxyEvent("Proxy received RPC Message: " + functionName, SDL_LIB_TRACE_KEY);
 	}
+
+	/**
+	 * Takes a list of RPCRequests and sends it to SDL in a synchronous fashion. Responses are captured through callback on OnMultipleRequestListener.
+	 * For sending requests asynchronously, use sendRequests <br>
+	 *
+	 * <strong>NOTE: This will override any listeners on individual RPCs</strong>
+	 *
+	 * @param rpcs is the list of RPCRequests being sent
+	 * @param listener listener for updates and completions
+	 * @throws SdlException if an unrecoverable error is encountered
+	 */
+	@SuppressWarnings("unused")
+	public void sendSequentialRequests(final List<RPCRequest> rpcs, final OnMultipleRequestListener listener) throws SdlException {
+		if (_proxyDisposed) {
+			throw new SdlException("This object has been disposed, it is no long capable of executing methods.", SdlExceptionCause.SDL_PROXY_DISPOSED);
+		}
+
+		SdlTrace.logProxyEvent("Application called sendSequentialRequests", SDL_LIB_TRACE_KEY);
+
+		synchronized(CONNECTION_REFERENCE_LOCK) {
+			if (!getIsConnected()) {
+				SdlTrace.logProxyEvent("Application attempted to call sendSequentialRequests without a connected transport.", SDL_LIB_TRACE_KEY);
+				throw new SdlException("There is no valid connection to SDL. sendSequentialRequests cannot be called until SDL has been connected.", SdlExceptionCause.SDL_UNAVAILABLE);
+			}
+		}
+
+		if (rpcs == null){
+			//Log error here
+			throw new SdlException("You must send some RPCs", SdlExceptionCause.INVALID_ARGUMENT);
+		}
+
+		int requestCount = rpcs.size();
+
+		// Break out of recursion, we have finished the requests
+		if (requestCount == 0) {
+			listener.onFinished();
+			return;
+		}
+
+		RPCRequest rpc = rpcs.remove(0);
+		rpc.setCorrelationID(CorrelationIdGenerator.generateId());
+
+		rpc.setOnRPCResponseListener(new OnRPCResponseListener() {
+			@Override
+			public void onResponse(int correlationId, RPCResponse response) {
+				if (response.getSuccess()) {
+					// success
+					listener.onUpdate(rpcs.size());
+					try {
+						// recurse after successful response of RPC
+						sendSequentialRequests(rpcs, listener);
+					} catch (SdlException e) {
+						e.printStackTrace();
+						listener.onError(correlationId, Result.GENERIC_ERROR, e.toString());
+					}
+				}
+			}
+
+			@Override
+			public void onError(int correlationId, Result resultCode, String info){
+				listener.onError(correlationId, resultCode, info);
+			}
+		});
+
+		sendRPCRequestPrivate(rpc);
+	}
+
+	/**
+	 * Takes a list of RPCRequests and sends it to SDL. Responses are captured through callback on OnMultipleRequestListener.
+	 * For sending requests synchronously, use sendSequentialRequests <br>
+	 *
+	 * <strong>NOTE: This will override any listeners on individual RPCs</strong>
+	 *
+	 * @param rpcs is the list of RPCRequests being sent
+	 * @param listener listener for updates and completions
+	 * @throws SdlException if an unrecoverable error is encountered
+	 */
+	@SuppressWarnings("unused")
+	public void sendRequests(List<RPCRequest> rpcs, final OnMultipleRequestListener listener) throws SdlException {
+
+		if (_proxyDisposed) {
+			throw new SdlException("This object has been disposed, it is no long capable of executing methods.", SdlExceptionCause.SDL_PROXY_DISPOSED);
+		}
+
+		SdlTrace.logProxyEvent("Application called sendRequests", SDL_LIB_TRACE_KEY);
+
+		synchronized(CONNECTION_REFERENCE_LOCK) {
+			if (!getIsConnected()) {
+				SdlTrace.logProxyEvent("Application attempted to call sendRequests without a connected transport.", SDL_LIB_TRACE_KEY);
+				throw new SdlException("There is no valid connection to SDL. sendRequests cannot be called until SDL has been connected.", SdlExceptionCause.SDL_UNAVAILABLE);
+			}
+		}
+
+		if (rpcs == null){
+			//Log error here
+			throw new SdlException("You must send some RPCs, the array is null", SdlExceptionCause.INVALID_ARGUMENT);
+		}
+
+		int arraySize = rpcs.size();
+
+		if (arraySize == 0) {
+			throw new SdlException("You must send some RPCs, the array is empty", SdlExceptionCause.INVALID_ARGUMENT);
+		}
+
+		for (int i = 0; i < arraySize; i++) {
+			RPCRequest rpc = rpcs.get(i);
+			rpc.setCorrelationID(CorrelationIdGenerator.generateId());
+			listener.addCorrelationId(rpc.getCorrelationID());
+			rpc.setOnRPCResponseListener(listener.getSingleRpcResponseListener());
+			sendRPCRequestPrivate(rpc);
+		}
+	}
 	
 	/**
 	 * Takes an RPCRequest and sends it to SDL.  Responses are captured through callback on IProxyListener.  
 	 * 
 	 * @param request is the RPCRequest being sent
-	 * @throws SdlException if an unrecoverable error is encountered  if an unrecoverable error is encountered
+	 * @throws SdlException if an unrecoverable error is encountered
 	 */
 	public void sendRPCRequest(RPCRequest request) throws SdlException {
 		if (_proxyDisposed) {
@@ -3474,7 +3588,7 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 				
 				SdlTrace.logProxyEvent("Application attempted to send a RegisterAppInterface or UnregisterAppInterface while using ALM.", SDL_LIB_TRACE_KEY);
 				throw new SdlException("The RPCRequest, " + request.getFunctionName() + 
-						", is unallowed using the Advanced Lifecycle Management Model.", SdlExceptionCause.INCORRECT_LIFECYCLE_MODEL);
+						", is un-allowed using the Advanced Lifecycle Management Model.", SdlExceptionCause.INCORRECT_LIFECYCLE_MODEL);
 			}
 		}
 		
@@ -3953,9 +4067,6 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 		VideoStreamingParameters acceptedParams = tryStartVideoStream(isEncrypted, parameters);
         if (acceptedParams != null) {
             return sdlSession.startVideoStream();
-        } else if(getWiProVersion() < 5){
-			sdlSession.setAcceptedVideoParams(new VideoStreamingParameters());
-			return sdlSession.startVideoStream();
         } else {
             return null;
         }
@@ -4146,6 +4257,9 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
         scheduler.shutdown();
 
         if (navServiceStartResponse) {
+			if(getWiProVersion() < 5){ //Versions 1-4 do not support streaming parameter negotiations
+				sdlSession.setAcceptedVideoParams(parameters);
+			}
 			return sdlSession.getAcceptedVideoParams();
         }
 
@@ -6110,13 +6224,24 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 	}
 
 	@SuppressWarnings("unused")
+	public boolean isCapabilitySupported(SystemCapabilityType systemCapabilityType) {
+		return _systemCapabilityManager != null && _systemCapabilityManager.isCapabilitySupported(systemCapabilityType);
+	}
+
+	@SuppressWarnings("unused")
 	public void getCapability(SystemCapabilityType systemCapabilityType, OnSystemCapabilityListener scListener){
-		_systemCapabilityManager.getCapability(systemCapabilityType, scListener);
+		if(_systemCapabilityManager != null){
+			_systemCapabilityManager.getCapability(systemCapabilityType, scListener);
+		}
 	}
 
 	@SuppressWarnings("unused")
 	public Object getCapability(SystemCapabilityType systemCapabilityType){
-		return _systemCapabilityManager.getCapability(systemCapabilityType);
+		if(_systemCapabilityManager != null ){
+			return _systemCapabilityManager.getCapability(systemCapabilityType);
+		}else{
+			return null;
+		}
 	}
 
 	/* ******************* END Public Helper Methods *************************/
@@ -6260,7 +6385,6 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 					}
 				}
 			});
-			hapticManager = new HapticInterfaceManager(iSdl);
 		}
 
 		public void startVideoStreaming(Class<? extends SdlRemoteDisplay> remoteDisplayClass, VideoStreamingParameters parameters, boolean encrypted){
@@ -6268,6 +6392,10 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 			if(streamListener == null){
 				Log.e(TAG, "Error starting video service");
 				return;
+			}
+			VideoStreamingCapability capability = (VideoStreamingCapability)_systemCapabilityManager.getCapability(SystemCapabilityType.VIDEO_STREAMING);
+			if(capability != null && capability.getIsHapticSpatialDataSupported()){
+				hapticManager = new HapticInterfaceManager(internalInterface);
 			}
 			this.remoteDisplayClass = remoteDisplayClass;
 			try {
@@ -6285,9 +6413,13 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 		public void stopStreaming(){
 			if(remoteDisplay!=null){
 				remoteDisplay.stop();
+				remoteDisplay = null;
 			}
 			if(encoder!=null){
 				encoder.shutDown();
+			}
+			if(internalInterface!=null){
+				internalInterface.stopVideoService();
 			}
 		}
 
@@ -6313,13 +6445,14 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 						//Remote display has been created.
 						//Now is a good time to do parsing for spatial data
 						VideoStreamingManager.this.remoteDisplay = remoteDisplay;
-						remoteDisplay.getMainView().post(new Runnable() {
-							@Override
-							public void run() {
-								hapticManager.refreshHapticData(remoteDisplay.getMainView());
-							}
-						});
-
+						if(hapticManager != null) {
+							remoteDisplay.getMainView().post(new Runnable() {
+								@Override
+								public void run() {
+									hapticManager.refreshHapticData(remoteDisplay.getMainView());
+								}
+							});
+						}
 						//Get touch scalars
 						ImageResolution resolution = null;
 						if(getWiProVersion()>=5){ //At this point we should already have the capability
@@ -6344,12 +6477,14 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 					public void onInvalidated(final SdlRemoteDisplay remoteDisplay) {
 						//Our view has been invalidated
 						//A good time to refresh spatial data
-						remoteDisplay.getMainView().post(new Runnable() {
-							@Override
-							public void run() {
-								hapticManager.refreshHapticData(remoteDisplay.getMainView());
-							}
-						});
+						if(hapticManager != null) {
+							remoteDisplay.getMainView().post(new Runnable() {
+								@Override
+								public void run() {
+									hapticManager.refreshHapticData(remoteDisplay.getMainView());
+								}
+							});
+						}
 					}
 				} ));
 				Thread showPresentation = new Thread(fTask);
@@ -6369,9 +6504,10 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 		@Override
 		public void onServiceEnded(SdlSession session, SessionType type) {
 			if(SessionType.NAV.equals(type)){
-				dispose();
+				if(remoteDisplay!=null){
+					stopStreaming();
+				}
 			}
-
 		}
 
 		@Override
