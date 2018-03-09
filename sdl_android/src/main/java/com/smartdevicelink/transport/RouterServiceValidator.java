@@ -43,7 +43,7 @@ public class RouterServiceValidator {
 
 	private static final String REQUEST_PREFIX = "https://woprjr.smartdevicelink.com/api/1/applications/queryTrustedRouters"; 
 
-	private static final String DEFAULT_APP_LIST = "{\"response\": {\"com.livio.sdl\" : { \"versionBlacklist\":[] }, \"com.lexus.tcapp\" : { \"versionBlacklist\":[] }, \"com.toyota.tcapp\" : { \"versionBlacklist\": [] } , \"com.sdl.router\":{\"versionBlacklist\": [] },\"com.ford.fordpass\" : { \"versionBlacklist\":[] } }}"; 
+	private static final String DEFAULT_APP_LIST = "{\"response\": {\"com.livio.sdl\" : { \"versionBlacklist\":[] }, \"com.lexus.tcapp\" : { \"versionBlacklist\":[] }, \"com.toyota.tcapp\" : { \"versionBlacklist\": [] } , \"com.sdl.router\":{\"versionBlacklist\": [] },\"com.ford.fordpass\" : { \"versionBlacklist\":[] }, \"com.xevo.cts.gcapp.dev\" : { \"versionBlacklist\":[] } }}";
 	
 	
 	private static final String JSON_RESPONSE_OBJECT_TAG = "response";
@@ -103,7 +103,7 @@ public class RouterServiceValidator {
 	 * @return whether or not the currently running router service can be trusted.
 	 */
 	public boolean validate(){
-		
+
 		if(securityLevel == -1){
 			securityLevel = getSecurityLevel(context);
 		}
@@ -507,7 +507,7 @@ public class RouterServiceValidator {
 	 * @param json
 	 * @return
 	 */
-	protected JSONObject stringToJson(String json){
+	protected static JSONObject stringToJson(String json){
 		if(json==null){
 			return stringToJson(DEFAULT_APP_LIST);
 		}
@@ -549,6 +549,10 @@ public class RouterServiceValidator {
 	 */
 	protected static boolean setTrustedList(Context context, String jsonString){
 		if(jsonString!=null && context!=null){
+			JSONObject json = stringToJson(jsonString);
+			if (json.length() == 0) {
+				jsonString = DEFAULT_APP_LIST;
+			}
 			SharedPreferences pref = context.getSharedPreferences(SDL, Context.MODE_PRIVATE);
 			// Write the new prefs
     		SharedPreferences.Editor prefAdd = pref.edit();
