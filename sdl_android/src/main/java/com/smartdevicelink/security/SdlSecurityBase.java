@@ -5,12 +5,14 @@ import java.util.List;
 
 import android.app.Service;
 
+import com.smartdevicelink.SdlConnection.SdlLegacySession;
 import com.smartdevicelink.SdlConnection.SdlSession;
 import com.smartdevicelink.protocol.enums.SessionType;
 
 public abstract class SdlSecurityBase {
 	
-	protected SdlSession session = null;	
+	protected SdlSession session = null;
+	protected SdlLegacySession _legacySession = null;
 	protected String appId = null;
 	protected List<String> makeList = null;
 	protected boolean isInitSuccess = false;
@@ -54,6 +56,10 @@ public abstract class SdlSecurityBase {
     	
     	setSessionId(val.getSessionId());
     	setSdlSession(val);
+    }
+    public void handleLegacySession(SdlLegacySession val) {
+        _legacySession = val;
+        setSessionId(_legacySession.getSessionId());
     }
 	
     private void setInitSuccess(boolean val) {

@@ -46,11 +46,13 @@ import com.smartdevicelink.Dispatcher.IDispatchingStrategy;
 import com.smartdevicelink.Dispatcher.ProxyMessageDispatcher;
 import com.smartdevicelink.SdlConnection.ISdlConnectionListener;
 import com.smartdevicelink.SdlConnection.SdlConnection;
+import com.smartdevicelink.SdlConnection.SdlLegacySession;
 import com.smartdevicelink.SdlConnection.SdlSession;
 import com.smartdevicelink.encoder.VirtualDisplayEncoder;
 import com.smartdevicelink.exception.SdlException;
 import com.smartdevicelink.exception.SdlExceptionCause;
 import com.smartdevicelink.haptic.HapticInterfaceManager;
+import com.smartdevicelink.localdebug.DebugConst;
 import com.smartdevicelink.marshal.JsonRPCMarshaller;
 import com.smartdevicelink.protocol.ProtocolMessage;
 import com.smartdevicelink.protocol.WiProProtocol;
@@ -95,6 +97,8 @@ import com.smartdevicelink.proxy.rpc.enums.SystemCapabilityType;
 import com.smartdevicelink.proxy.rpc.enums.TextAlignment;
 import com.smartdevicelink.proxy.rpc.enums.TouchType;
 import com.smartdevicelink.proxy.rpc.enums.UpdateMode;
+import com.smartdevicelink.proxy.rpc.enums.VideoStreamingCodec;
+import com.smartdevicelink.proxy.rpc.enums.VideoStreamingProtocol;
 import com.smartdevicelink.proxy.rpc.listeners.OnMultipleRequestListener;
 import com.smartdevicelink.proxy.rpc.listeners.OnPutFileUpdateListener;
 import com.smartdevicelink.proxy.rpc.listeners.OnRPCNotificationListener;
@@ -126,6 +130,7 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 	private static final int RESPONSE_WAIT_TIME = 2000;
 
 	private SdlSession sdlSession = null;
+	private SdlLegacySession _legacySession = null;
 	private proxyListenerType _proxyListener = null;
 	
 	protected Service _appService = null;
@@ -240,7 +245,26 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 
 	protected VideoStreamingManager manager; //Will move to SdlSession once the class becomes public
 
+	private static class Log {
+		public static void e(String tag, String msg) {
+			android.util.Log.e(tag, msg);
+			DebugConst.log(tag, msg);
+		}
+		public static void w(String tag, String msg) {
+			android.util.Log.w(tag, msg);
+			DebugConst.log(tag, msg);
+		}
+		public static void i(String tag, String msg) {
+			android.util.Log.i(tag, msg);
+			DebugConst.log(tag, msg);
+		}
+		public static void d(String tag, String msg) {
+			android.util.Log.d(tag, msg);
+			DebugConst.log(tag, msg);
+		}
+	}
 
+	private final boolean _useLegacySession = false; // flag indicates if we use legacy session.
 	// Interface broker
 	private SdlInterfaceBroker _interfaceBroker = null;
 	//We create an easily passable anonymous class of the interface so that we don't expose the internal interface to developers
@@ -423,9 +447,10 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 			updateBroadcastIntent(sendIntent, "COMMENT3", " Encrypted: " + isEncrypted);
 			sendBroadcastIntent(sendIntent);
 			
-			setWiProVersion(version);	
-			
-			if (sessionType.eq(SessionType.RPC)) {	
+			setWiProVersion(version);
+
+			DebugConst.log(TAG, "onProtocolSessionStarted sessionType=" + sessionType.getName());
+			if (sessionType.eq(SessionType.RPC)) {
 
 				if (!isEncrypted)
 				{
@@ -447,6 +472,7 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 					RPCProtectedServiceStarted();
 				}
 			} else if (sessionType.eq(SessionType.NAV)) {
+				DebugConst.log(TAG, "about NavServiceStarted");
 				NavServiceStarted();
 			} else if (sessionType.eq(SessionType.PCM)) {
 				AudioServiceStarted();
@@ -463,6 +489,18 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 		@Override
 		public void onProtocolSessionStartedNACKed(SessionType sessionType,
 				byte sessionID, byte version, String correlationID, List<String> rejectedParams) {
+			{       // CUSTOM logging
+				String rparams = null;
+				if (rejectedParams != null) {
+					rparams = "[";
+					for (String s : rejectedParams) {
+						rparams += s + ",";
+					}
+					rparams += "]";
+				}
+				DebugConst.log(TAG, "onProtocolSessionStartedNACKed() /stype:" + sessionType.getName() + " /sessionID:" + sessionID +
+						" /version:" + version + " /corId:" + correlationID + " /rparams:" + rparams);
+			}
 			OnServiceNACKed message = new OnServiceNACKed(sessionType);
 			queueInternalMessage(message);
 			
@@ -723,6 +761,19 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 			_incomingProxyMessageDispatcher = new ProxyMessageDispatcher<ProtocolMessage>("INCOMING_MESSAGE_DISPATCHER",new IDispatchingStrategy<ProtocolMessage>() {
 						@Override
 						public void dispatch(ProtocolMessage message) {
+							// CUSTOMIZED logging
+							if (SessionType.RPC.equals(message.getSessionType())) {
+								try {
+									String mes = "RPC:incomingMessage";
+									mes += " /funcId:" + message.getFunctionID() + ":" + FunctionID.getFunctionName(message.getFunctionID());
+									mes += " /data:" + (new String(message.getData(), "UTF-8"));
+									DebugConst.log(TAG, mes);
+
+								} catch (Exception e) {
+									DebugConst.log(TAG, "incomingMessage failed. /e:" + e.getMessage());
+									e.printStackTrace();
+								}
+							}
 							dispatchIncomingMessage(message);
 						}
 	
@@ -749,6 +800,19 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 			_outgoingProxyMessageDispatcher = new ProxyMessageDispatcher<ProtocolMessage>("OUTGOING_MESSAGE_DISPATCHER",new IDispatchingStrategy<ProtocolMessage>() {
 						@Override
 						public void dispatch(ProtocolMessage message) {
+							// CUSTOMIZED logging
+							if (SessionType.RPC.equals(message.getSessionType())) {
+								try {
+									String mes = "RPC:outgoingMessage";
+									mes += " /funcId:" + message.getFunctionID() + ":" + FunctionID.getFunctionName(message.getFunctionID());
+									mes += " /data:" + (new String(message.getData(), "UTF-8"));
+									DebugConst.log(TAG, mes);
+
+								} catch (Exception e) {
+									DebugConst.log(TAG, "outgoingMessage failed. /e:" + e.getMessage());
+									e.printStackTrace();
+								}
+							}
 							dispatchOutgoingMessage(message);
 						}
 	
@@ -1260,7 +1324,12 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 	
 	// Protected isConnected method to allow legacy proxy to poll isConnected state
 	public Boolean getIsConnected() {
-		return sdlSession != null && sdlSession.getIsConnected();
+		if (sdlSession != null) {
+			return sdlSession.getIsConnected();
+		} else if (_legacySession != null) {
+			return _legacySession.getIsConnected();
+		}
+		return false;
 	}
 
 	
@@ -1291,6 +1360,13 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 		_systemCapabilityManager = new SystemCapabilityManager(_internalInterface);
 		// Setup SdlConnection
 		synchronized(CONNECTION_REFERENCE_LOCK) {
+			// [shiniwa]
+			if (_useLegacySession) {
+				_legacySession = SdlLegacySession.createSession(_wiproVersion, _interfaceBroker, _transportConfig);
+				_legacySession.startSession();
+				sendTransportBroadcast();
+				return;
+			}
 			if(_transportConfig.getTransportType().equals(TransportType.MULTIPLEX)){
 				this.sdlSession = new SdlSession(_interfaceBroker,(MultiplexTransportConfig)_transportConfig);
 			}else{
@@ -1445,6 +1521,10 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 			// Clean up SDL Connection
 			synchronized(CONNECTION_REFERENCE_LOCK) {
 				if (sdlSession != null) sdlSession.close();
+				// [shiniwa]
+				if (_legacySession != null) {
+					_legacySession.close();
+				}
 			}		
 		} finally {
 			SdlTrace.logProxyEvent("SdlProxy cleaned.", SDL_LIB_TRACE_KEY);
@@ -1637,6 +1717,9 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 			if (sdlSession != null) {
 				sdlSession.sendMessage(message);
 			}
+			if (_legacySession != null) {
+				_legacySession.sendMessage(message);
+			}
 		}		
 		SdlTrace.logProxyEvent("SdlProxy sending Protocol Message: " + message.toString(), SDL_LIB_TRACE_KEY);
 	}
@@ -1776,6 +1859,9 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 			pm.setData(msgBytes);
 			if (sdlSession != null)
 				pm.setSessionID(sdlSession.getSessionId());
+			else if (_legacySession != null) {
+				pm.setSessionID(_legacySession.getSessionId());
+			}
 			pm.setMessageType(MessageType.RPC);
 			pm.setSessionType(SessionType.RPC);
 			pm.setFunctionID(FunctionID.getFunctionId(request.getFunctionName()));
@@ -1970,6 +2056,9 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 						sec.setAppId(_appID);
 						if (sdlSession != null)
 							sec.handleSdlSession(sdlSession);
+						else if (_legacySession != null) {
+							sec.handleLegacySession(_legacySession);
+						}
 					return;
 				}				
 			}
@@ -3053,6 +3142,8 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 				if (sdlSession != null)
 				{
 					sdlSession.getLockScreenMan().setHMILevel(msg.getHmiLevel());
+				} else if (_legacySession != null) {
+					_legacySession.getLockScreenMan().setHMILevel(msg.getHmiLevel());
 				}
 				
 				msg.setFirstRun(firstTimeFull);
@@ -3067,13 +3158,21 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 						@Override
 						public void run() {
 							_proxyListener.onOnHMIStatus(msg);
-							_proxyListener.onOnLockScreenNotification(sdlSession.getLockScreenMan().getLockObj());
+							if (sdlSession != null) {
+								_proxyListener.onOnLockScreenNotification(sdlSession.getLockScreenMan().getLockObj());
+							} else if (_legacySession != null) {
+								_proxyListener.onOnLockScreenNotification(_legacySession.getLockScreenMan().getLockObj());
+							}
 							onRPCNotificationReceived(msg);
 							}
 						});
 					} else {
 						_proxyListener.onOnHMIStatus(msg);
-						_proxyListener.onOnLockScreenNotification(sdlSession.getLockScreenMan().getLockObj());
+						if (sdlSession != null) {
+							_proxyListener.onOnLockScreenNotification(sdlSession.getLockScreenMan().getLockObj());
+						} else if (_legacySession != null) {
+							_proxyListener.onOnLockScreenNotification(_legacySession.getLockScreenMan().getLockObj());
+						}
 						onRPCNotificationReceived(msg);
 					}
 			} else if (functionName.equals(FunctionID.ON_COMMAND.toString())) {
@@ -3103,6 +3202,9 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 				{
 					DriverDistractionState drDist = msg.getState();
 					sdlSession.getLockScreenMan().setDriverDistStatus(drDist == DriverDistractionState.DD_ON);
+				} else if (_legacySession != null) {
+					DriverDistractionState drDist = msg.getState();
+					_legacySession.getLockScreenMan().setDriverDistStatus(drDist == DriverDistractionState.DD_ON);
 				}
 				
 				if (_callbackToUIThread) {
@@ -3111,13 +3213,21 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 						@Override
 						public void run() {
 							_proxyListener.onOnDriverDistraction(msg);
-							_proxyListener.onOnLockScreenNotification(sdlSession.getLockScreenMan().getLockObj());
+							if (sdlSession != null) {
+								_proxyListener.onOnLockScreenNotification(sdlSession.getLockScreenMan().getLockObj());
+							} else if (_legacySession != null) {
+								_proxyListener.onOnLockScreenNotification(_legacySession.getLockScreenMan().getLockObj());
+							}
 							onRPCNotificationReceived(msg);
 						}
 					});
 				} else {
 					_proxyListener.onOnDriverDistraction(msg);
-					_proxyListener.onOnLockScreenNotification(sdlSession.getLockScreenMan().getLockObj());
+					if (sdlSession != null) {
+						_proxyListener.onOnLockScreenNotification(sdlSession.getLockScreenMan().getLockObj());
+					} else if (_legacySession != null) {
+						_proxyListener.onOnLockScreenNotification(_legacySession.getLockScreenMan().getLockObj());
+					}
 					onRPCNotificationReceived(msg);
 				}
 			} else if (functionName.equals(FunctionID.ON_ENCODED_SYNC_P_DATA.toString())) {
@@ -3736,7 +3846,7 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 	@SuppressWarnings("unchecked")
 	private RPCStreamController startRPCStream(String sLocalFile, PutFile request, SessionType sType, byte rpcSessionID, byte wiproVersion)
 	{		
-		if (sdlSession == null) return null;		
+		if (sdlSession == null && _legacySession == null) return null;
 					
 		FileInputStream is = getFileInputStream(sLocalFile);
 		if (is == null) return null;
@@ -3770,8 +3880,15 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 		}		
 		
 		try {
-			StreamRPCPacketizer rpcPacketizer = new StreamRPCPacketizer((SdlProxyBase<IProxyListenerBase>) this, sdlSession, is, request, sType, rpcSessionID, wiproVersion, lSize, sdlSession);
-			rpcPacketizer.start();
+			StreamRPCPacketizer rpcPacketizer = null;
+			if (sdlSession != null) {
+				rpcPacketizer = new StreamRPCPacketizer((SdlProxyBase<IProxyListenerBase>) this, sdlSession, is, request, sType, rpcSessionID, wiproVersion, lSize, sdlSession);
+			} else if (_legacySession != null) {
+				rpcPacketizer = new StreamRPCPacketizer((SdlProxyBase<IProxyListenerBase>) this, _legacySession, is, request, sType, rpcSessionID, wiproVersion, lSize, _legacySession);
+			}
+			if (rpcPacketizer != null) {
+				rpcPacketizer.start();
+			}
 			return new RPCStreamController(rpcPacketizer, request.getCorrelationID());
 		} catch (Exception e) {
             Log.e("SyncConnection", "Unable to start streaming:" + e.toString());  
@@ -3780,31 +3897,49 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 	}
 
 	private RPCStreamController startPutFileStream(String sPath, PutFile msg) {
-		if (sdlSession == null) return null;		
-		return startRPCStream(sPath, msg, SessionType.RPC, sdlSession.getSessionId(), _wiproVersion);		
+		if (sdlSession != null) {
+			return startRPCStream(sPath, msg, SessionType.RPC, sdlSession.getSessionId(), _wiproVersion);
+		} else if (_legacySession != null) {
+			return startRPCStream(sPath, msg, SessionType.RPC, _legacySession.getSessionId(), _wiproVersion);
+		}
+		return null;
 	}
 
 	private RPCStreamController startPutFileStream(InputStream is, PutFile msg) {
-		if (sdlSession == null) return null;		
 		if (is == null) return null;
-		return startRPCStream(is, msg, SessionType.RPC, sdlSession.getSessionId(), _wiproVersion);
+		if (sdlSession != null) {
+			return startRPCStream(is, msg, SessionType.RPC, sdlSession.getSessionId(), _wiproVersion);
+		} else if (_legacySession != null) {
+			return startRPCStream(is, msg, SessionType.RPC, _legacySession.getSessionId(), _wiproVersion);
+		}
+		return null;
 	}
 
 	@SuppressWarnings("UnusedReturnValue")
 	public boolean startRPCStream(InputStream is, RPCRequest msg) {
-		if (sdlSession == null) return false;		
-		sdlSession.startRPCStream(is, msg, SessionType.RPC, sdlSession.getSessionId(), _wiproVersion);
+	    if (sdlSession != null) {
+            sdlSession.startRPCStream(is, msg, SessionType.RPC, sdlSession.getSessionId(), _wiproVersion);
+        } else if (_legacySession != null) {
+            _legacySession.startRPCStream(is, msg, SessionType.RPC, _legacySession.getSessionId(), _wiproVersion);
+        }
 		return true;
 	}
 	
 	public OutputStream startRPCStream(RPCRequest msg) {
-		if (sdlSession == null) return null;		
-		return sdlSession.startRPCStream(msg, SessionType.RPC, sdlSession.getSessionId(), _wiproVersion);				
+	    if (sdlSession != null) {
+            return sdlSession.startRPCStream(msg, SessionType.RPC, sdlSession.getSessionId(), _wiproVersion);
+        } else if (_legacySession != null) {
+	        _legacySession.startRPCStream(msg, SessionType.RPC, _legacySession.getSessionId(), _wiproVersion);
+        }
+        return null;
 	}
 	
 	public void endRPCStream() {
-		if (sdlSession == null) return;		
-		sdlSession.stopRPCStream();
+	    if (sdlSession != null) {
+            sdlSession.stopRPCStream();
+        } else if (_legacySession != null) {
+	        _legacySession.stopRPCStream();
+        }
 	}
 	
 	private class CallableMethod implements Callable<Void> {
@@ -3817,6 +3952,7 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 		@Override
 		public Void call() {
 			try {
+				Log.d(TAG, "about sleeping thread=" + Thread.currentThread().getId());
 				Thread.sleep(waitTime);
 			} catch (InterruptedException e) {
 				e.printStackTrace();
@@ -3835,12 +3971,20 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 
 	@SuppressWarnings("unused")
 	public void startService(SessionType serviceType, boolean isEncrypted){
-		sdlSession.startService(serviceType, sdlSession.getSessionId(), isEncrypted);
+	    if (sdlSession != null) {
+            sdlSession.startService(serviceType, sdlSession.getSessionId(), isEncrypted);
+        } else if (_legacySession != null) {
+	        _legacySession.startService(serviceType, _legacySession.getSessionId(), isEncrypted);
+        }
 	}
 
 	@SuppressWarnings("unused")
 	public void endService(SessionType serviceType){
-		sdlSession.endService(serviceType, sdlSession.getSessionId());
+	    if (sdlSession != null) {
+            sdlSession.endService(serviceType, sdlSession.getSessionId());
+        } else {
+	        _legacySession.endService(serviceType, _legacySession.getSessionId());
+        }
 	}
 
 
@@ -4059,10 +4203,10 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 					}
 					builder.append(paramName);
 				}
-				DebugTool.logWarning("StartService for nav failed. Rejected params: " + builder.toString());
+				DebugTool.logWarning("StartService for pcm failed. Rejected params: " + builder.toString());
 
 			} else {
-				DebugTool.logWarning("StartService for nav failed (rejected params not supplied)");
+				DebugTool.logWarning("StartService for pcm failed (rejected params not supplied)");
 			}
 			return null;
 		}
@@ -4091,24 +4235,30 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
      *         started, null otherwise
      */
     @SuppressWarnings("unused")
-    public IVideoStreamListener startVideoStream(boolean isEncrypted, VideoStreamingParameters parameters) {
-        if (sdlSession == null) {
+    public IVideoStreamListener startVideoStream(final boolean isEncrypted, final VideoStreamingParameters parameters) {
+        if (sdlSession == null && _legacySession == null) {
             DebugTool.logWarning("SdlSession is not created yet.");
             return null;
         }
-        if (!sdlSession.getIsConnected()) {
+        if (sdlSession != null && !sdlSession.getIsConnected()) {
             DebugTool.logWarning("Connection is not available.");
             return null;
         }
 
-		sdlSession.setDesiredVideoParams(parameters);
+        //-- setDesirtedVideoParams is done on tryStartVideoStream. --//
 
 		VideoStreamingParameters acceptedParams = tryStartVideoStream(isEncrypted, parameters);
-        if (acceptedParams != null) {
-            return sdlSession.startVideoStream();
-        } else {
-            return null;
-        }
+		if (acceptedParams != null) {
+			if (sdlSession != null) {
+				return sdlSession.startVideoStream();
+			} else if (_legacySession != null) {
+				return _legacySession.startVideoStream();
+			}
+		} else {
+			Log.e(TAG, "tryStartVideoStream failed");
+			return null;
+		}
+		return null;
     }
 
     /**
@@ -4117,11 +4267,15 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
      */
     @SuppressWarnings("unused")
     public boolean endVideoStream() {
-        if (sdlSession == null){ return false; }
+        if (sdlSession == null && _legacySession == null){ return false; }
 
         navServiceEndResponseReceived = false;
         navServiceEndResponse = false;
-        sdlSession.stopVideoStream();
+        if (sdlSession != null) {
+            sdlSession.stopVideoStream();
+        } else if (_legacySession != null) {
+            _legacySession.stopVideoStream();
+        }
 
         FutureTask<Void> fTask =  createFutureTask(new CallableMethod(RESPONSE_WAIT_TIME));
         ScheduledExecutorService scheduler = createScheduler();
@@ -4140,7 +4294,12 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
      */
     @SuppressWarnings("unused")
     public boolean pauseVideoStream() {
-        return sdlSession != null && sdlSession.pauseVideoStream();
+        if (sdlSession != null) {
+            return sdlSession.pauseVideoStream();
+        } else if (_legacySession != null) {
+            return _legacySession.pauseVideoStream();
+        }
+        return false;
     }
 
     /**
@@ -4149,7 +4308,12 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
      */
     @SuppressWarnings("unused")
     public boolean resumeVideoStream() {
-        return sdlSession != null && sdlSession.resumeVideoStream();
+        if (sdlSession != null) {
+            return sdlSession != null && sdlSession.resumeVideoStream();
+        } else if (_legacySession != null) {
+            return _legacySession.resumeVideoStream();
+        }
+        return false;
     }
 
 	/**
@@ -4165,8 +4329,11 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 	public Surface createOpenGLInputSurface(int frameRate, int iFrameInterval, int width,
 											int height, int bitrate, boolean isEncrypted) {
         
-        if (sdlSession == null || !sdlSession.getIsConnected()){
+        if (sdlSession != null && !sdlSession.getIsConnected()){
 			return null;
+        }
+        if (_legacySession != null && !_legacySession.getIsConnected()) {
+            return null;
         }
 
 		VideoStreamingParameters desired = new VideoStreamingParameters();
@@ -4180,11 +4347,16 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 
 		VideoStreamingParameters acceptedParams = tryStartVideoStream(isEncrypted, desired);
         if (acceptedParams != null) {
-            return sdlSession.createOpenGLInputSurface(frameRate, iFrameInterval, width,
-                    height, bitrate, SessionType.NAV, sdlSession.getSessionId());
+            if (sdlSession != null) {
+                return sdlSession.createOpenGLInputSurface(frameRate, iFrameInterval, width,
+                        height, bitrate, SessionType.NAV, sdlSession.getSessionId());
+            } else if (_legacySession != null) {
+                return _legacySession.createOpenGLInputSurface(frameRate, iFrameInterval, width, height, bitrate, SessionType.NAV, _legacySession.getSessionId());
+            }
         } else {
             return null;
         }
+        return null;
     }
 
 	/**
@@ -4206,17 +4378,24 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 		//Create streaming manager
 		if(manager == null){
 			manager = new VideoStreamingManager(context,this._internalInterface);
+			Log.d(TAG, "VideoStreamingManager has been created");
 		}
 
 		if(parameters == null){
 			if(getWiProVersion() >= 5) {
+				Log.d(TAG, "About startVideoStreaming for WiproVersion 5");
 				_systemCapabilityManager.getCapability(SystemCapabilityType.VIDEO_STREAMING, new OnSystemCapabilityListener() {
 					@Override
 					public void onCapabilityRetrieved(Object capability) {
 						VideoStreamingParameters params = new VideoStreamingParameters();
 						params.update((VideoStreamingCapability)capability);	//Streaming parameters are ready time to stream
-						sdlSession.setDesiredVideoParams(params);
+                        if (sdlSession != null) {
+                            sdlSession.setDesiredVideoParams(params);
+                        } else if (_legacySession != null) {
+                            _legacySession.setDesiredVideoParams(params);
+                        }
 						manager.startVideoStreaming(remoteDisplay, params, encrypted);
+						Log.d(TAG, "startVideoStreaming in onCapabilityRetrieved");
 					}
 
 					@Override
@@ -4226,17 +4405,27 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 					}
 				});
 			}else{
+				Log.d(TAG, "about startVideoStreaming for lower WiProVersion");
 				//We just use default video streaming params
 				VideoStreamingParameters params = new VideoStreamingParameters();
 				DisplayCapabilities dispCap = (DisplayCapabilities)_systemCapabilityManager.getCapability(SystemCapabilityType.DISPLAY);
 				if(dispCap !=null){
 					params.setResolution(dispCap.getScreenParams().getImageResolution());
 				}
-				sdlSession.setDesiredVideoParams(params);
+				if (sdlSession != null) {
+                    sdlSession.setDesiredVideoParams(params);
+                } else if (_legacySession != null) {
+				    _legacySession.setDesiredVideoParams(params);
+                }
 				manager.startVideoStreaming(remoteDisplay,params, encrypted);
 			}
 		}else{
-			sdlSession.setDesiredVideoParams(parameters);
+			Log.d(TAG, "about startVideoStreaming for param:" + parameters.toString());
+			if (sdlSession != null) {
+                sdlSession.setDesiredVideoParams(parameters);
+            } else if (_legacySession != null) {
+			    _legacySession.setDesiredVideoParams(parameters);
+            }
 			manager.startVideoStreaming(remoteDisplay,parameters, encrypted);
 		}
 	}
@@ -4266,7 +4455,7 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
      */
     @SuppressWarnings("unused")
 	private VideoStreamingParameters tryStartVideoStream(boolean isEncrypted, VideoStreamingParameters parameters) {
-        if (sdlSession == null) {
+        if (sdlSession == null && _legacySession == null) {
             DebugTool.logWarning("SdlSession is not created yet.");
             return null;
         }
@@ -4279,28 +4468,21 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
             return null;
         }
 
-		sdlSession.setDesiredVideoParams(parameters);
+        if (sdlSession != null) {
+            sdlSession.setDesiredVideoParams(parameters);
+        } else if (_legacySession != null) {
+            _legacySession.setDesiredVideoParams(parameters);
+        }
 
 		navServiceStartResponseReceived = false;
 		navServiceStartResponse = false;
 		navServiceStartRejectedParams = null;
 
-		sdlSession.startService(SessionType.NAV, sdlSession.getSessionId(), isEncrypted);
-
-		FutureTask<Void> fTask = createFutureTask(new CallableMethod(RESPONSE_WAIT_TIME));
-		ScheduledExecutorService scheduler = createScheduler();
-		scheduler.execute(fTask);
-
-		//noinspection StatementWithEmptyBody
-        while (!navServiceStartResponseReceived && !fTask.isDone());
-        scheduler.shutdown();
-
-        if (navServiceStartResponse) {
-			if(getWiProVersion() < 5){ //Versions 1-4 do not support streaming parameter negotiations
-				sdlSession.setAcceptedVideoParams(parameters);
-			}
-			return sdlSession.getAcceptedVideoParams();
-        }
+		Log.d(TAG, "about starting NAV service");
+		VideoStreamingParameters params = tryStartNavService(isEncrypted, parameters);
+		if (params != null) {
+			return params;
+		}
 
         if (navServiceStartRejectedParams != null) {
 			StringBuilder builder = new StringBuilder();
@@ -4316,18 +4498,50 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
         } else {
 			DebugTool.logWarning("StartService for nav failed (rejected params not supplied)");
 		}
-
-        return null;
+		return null;
     }
 
+    private VideoStreamingParameters tryStartNavService(final boolean isEncrypted, final VideoStreamingParameters parameters) {
+		if (sdlSession != null) {
+			sdlSession.startService(SessionType.NAV, sdlSession.getSessionId(), isEncrypted);
+		} else if (_legacySession != null) {
+			_legacySession.startService(SessionType.NAV, _legacySession.getSessionId(), isEncrypted);
+		}
+
+		FutureTask<Void> fTask = createFutureTask(new CallableMethod(RESPONSE_WAIT_TIME));
+		ScheduledExecutorService scheduler = createScheduler();
+		scheduler.execute(fTask);
+
+		//noinspection StatementWithEmptyBody
+		while (!navServiceStartResponseReceived && !fTask.isDone());
+		scheduler.shutdown();
+
+		if (navServiceStartResponse) {
+			if(getWiProVersion() < 5){ //Versions 1-4 do not support streaming parameter negotiations
+				if (sdlSession != null) {
+					sdlSession.setAcceptedVideoParams(parameters);
+				} else if (_legacySession != null) {
+					_legacySession.setAcceptedVideoParams(parameters);
+				}
+			}
+			VideoStreamingParameters params = (sdlSession != null) ? sdlSession.getAcceptedVideoParams() : _legacySession.getAcceptedVideoParams();
+			return params;
+		}
+		return null;
+
+	}
 	/**
 	 *Starts the MediaCodec encoder utilized in conjunction with the Surface returned via the createOpenGLInputSurface method
 	 */
     @SuppressWarnings("unused")
 	public void startEncoder () {
-        if (sdlSession == null  || !sdlSession.getIsConnected()) return;
+        if (sdlSession != null  && !sdlSession.getIsConnected()) return;
 
-        sdlSession.startEncoder();
+        if (sdlSession != null) {
+            sdlSession.startEncoder();
+        } else if (_legacySession != null && _legacySession.getIsConnected()) {
+            _legacySession.startEncoder();
+        }
     }
     
 	/**
@@ -4335,9 +4549,13 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 	 */
     @SuppressWarnings("unused")
 	public void releaseEncoder() {
-		if (sdlSession == null  || !sdlSession.getIsConnected()) return;
+        if (sdlSession != null  && !sdlSession.getIsConnected()) return;
 
-        sdlSession.releaseEncoder();
+        if (sdlSession != null) {
+            sdlSession.releaseEncoder();
+        } else if (_legacySession != null) {
+            _legacySession.releaseEncoder();
+        }
     }
     
 	/**
@@ -4345,9 +4563,13 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 	 */
     @SuppressWarnings("unused")
 	public void drainEncoder(boolean endOfStream) {
-		if (sdlSession == null  || !sdlSession.getIsConnected()) return;
+        if (sdlSession != null  && !sdlSession.getIsConnected()) return;
 
-        sdlSession.drainEncoder(endOfStream);
+        if (sdlSession != null) {
+            sdlSession.drainEncoder(endOfStream);
+        } else if (_legacySession != null) {
+            _legacySession.drainEncoder(endOfStream);
+        }
     }
 
     /**
@@ -4372,11 +4594,11 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
     @SuppressWarnings("unused")
     public IAudioStreamListener startAudioStream(boolean isEncrypted, AudioStreamingCodec codec,
                                                  AudioStreamingParams params) {
-        if (sdlSession == null) {
+        if (sdlSession == null && _legacySession == null) {
             DebugTool.logWarning("SdlSession is not created yet.");
             return null;
         }
-        if (!sdlSession.getIsConnected()) {
+        if (sdlSession != null && !sdlSession.getIsConnected()) {
             DebugTool.logWarning("Connection is not available.");
             return null;
         }
@@ -4387,7 +4609,11 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 
         pcmServiceStartResponseReceived = false;
         pcmServiceStartResponse = false;
-        sdlSession.startService(SessionType.PCM, sdlSession.getSessionId(), isEncrypted);
+        if (sdlSession != null) {
+            sdlSession.startService(SessionType.PCM, sdlSession.getSessionId(), isEncrypted);
+        } else if (_legacySession != null) {
+            _legacySession.startService(SessionType.PCM, _legacySession.getSessionId(), isEncrypted);
+        }
 
         FutureTask<Void> fTask = createFutureTask(new CallableMethod(RESPONSE_WAIT_TIME));
         ScheduledExecutorService scheduler = createScheduler();
@@ -4399,7 +4625,11 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 
         if (pcmServiceStartResponse) {
             DebugTool.logInfo("StartService for audio succeeded");
-            return sdlSession.startAudioStream();
+            if (sdlSession != null) {
+                return sdlSession.startAudioStream();
+            } else if (_legacySession != null) {
+                return _legacySession.startAudioStream();
+            }
         } else {
             if (pcmServiceStartRejectedParams != null) {
                 StringBuilder builder = new StringBuilder();
@@ -4415,6 +4645,7 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
             }
             return null;
         }
+        return null;
     }
 
     /**
@@ -4423,11 +4654,15 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
      */
     @SuppressWarnings("unused")
     public boolean endAudioStream() {
-		if (sdlSession == null  || !sdlSession.getIsConnected()) return false;
+		if (sdlSession == null  && !sdlSession.getIsConnected()) return false;
 
         pcmServiceEndResponseReceived = false;
         pcmServiceEndResponse = false;
-        sdlSession.stopAudioStream();
+        if (sdlSession != null) {
+            sdlSession.stopAudioStream();
+        } else if (_legacySession != null) {
+            _legacySession.stopAudioStream();
+        }
 
         FutureTask<Void> fTask =  createFutureTask(new CallableMethod(RESPONSE_WAIT_TIME));
         ScheduledExecutorService scheduler = createScheduler();
@@ -4455,7 +4690,12 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
      */
     @SuppressWarnings("unused")
     public boolean resumeAudioStream() {
-        return sdlSession != null && sdlSession.resumeAudioStream();
+        if (sdlSession != null) {
+            return sdlSession.resumeAudioStream();
+        } else if (_legacySession != null) {
+            return _legacySession.resumeAudioStream();
+        }
+        return false;
     }
 
 	private void NavServiceStarted() {
@@ -4513,7 +4753,11 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 	public boolean startProtectedRPCService() {
 		rpcProtectedResponseReceived = false;
 		rpcProtectedStartResponse = false;
-		sdlSession.startService(SessionType.RPC, sdlSession.getSessionId(), true);
+		if (sdlSession != null) {
+            sdlSession.startService(SessionType.RPC, sdlSession.getSessionId(), true);
+        } else if (_legacySession != null) {
+		    _legacySession.startService(SessionType.RPC, _legacySession.getSessionId(), true);
+        }
 
 		FutureTask<Void> fTask =  createFutureTask(new CallableMethod(RESPONSE_WAIT_TIME));
 		ScheduledExecutorService scheduler = createScheduler();
@@ -4533,9 +4777,13 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
                     SdlExceptionCause.LOCK_SCREEN_ICON_NOT_SUPPORTED));
 	        return;
 	    }
-	    
-	    LockScreenManager lockMan = sdlSession.getLockScreenMan();
-	    Bitmap bitmap = lockMan.getLockScreenIcon();
+
+	    Bitmap bitmap = null;
+	    if (sdlSession != null) {
+            bitmap = sdlSession.getLockScreenMan().getLockScreenIcon();
+        } else if (_legacySession != null) {
+	        bitmap = _legacySession.getLockScreenMan().getLockScreenIcon();
+        }
 	    
 	    // read bitmap if it was already downloaded so we don't have to download it every time
 	    if(bitmap != null){
@@ -4543,291 +4791,295 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 	    }
 	    else{
     	    String url = lockScreenIconRequest.getUrl();
-    	    sdlSession.getLockScreenMan().downloadLockScreenIcon(url, l);
-	    }
-	}
+            if (sdlSession != null) {
+                sdlSession.getLockScreenMan().downloadLockScreenIcon(url, l);
+            } else if (_legacySession != null) {
+                _legacySession.getLockScreenMan().downloadLockScreenIcon(url, l);
+            }
+        }
+    }
 
-	/* ******************* Public Helper Methods *************************/
-	
-	/*Begin V1 Enhanced helper*/
-	
-	/**
-	 *Sends an AddCommand RPCRequest to SDL. Responses are captured through callback on IProxyListener.
-	 *
-	 *@param commandID -Unique command ID of the command to add.
-	 *@param menuText  -Menu text for optional sub value containing menu parameters.
-	 *@param parentID  -Menu parent ID for optional sub value containing menu parameters.
-	 *@param position  -Menu position for optional sub value containing menu parameters.
-	 *@param vrCommands -VR synonyms for this AddCommand.
-	 *@param IconValue -A static hex icon value or the binary image file name identifier (sent by the PutFile RPC).
-	 *@param IconType -Describes whether the image is static or dynamic
-	 *@param correlationID -A unique ID that correlates each RPCRequest and RPCResponse
-	 * @throws SdlException if an unrecoverable error is encountered
-	 */
-	@SuppressWarnings("SameParameterValue")
-	public void addCommand(Integer commandID,
-						   String menuText, Integer parentID, Integer position,
-						   Vector<String> vrCommands, String IconValue, ImageType IconType, Integer correlationID)
-			throws SdlException {
-		
-		AddCommand msg = RPCRequestFactory.buildAddCommand(commandID, menuText, parentID, position,
-			vrCommands, IconValue, IconType, correlationID);
-		
-		sendRPCRequest(msg);
-	}
-	
-	/**
-	 *Sends an AddCommand RPCRequest to SDL. Responses are captured through callback on IProxyListener.
-	 *
-	 *@param commandID -Unique command ID of the command to add.
-	 *@param menuText -Menu text for optional sub value containing menu parameters.
-	 *@param position -Menu position for optional sub value containing menu parameters.
-	 *@param vrCommands -VR synonyms for this AddCommand.
-	 *@param IconValue -A static hex icon value or the binary image file name identifier (sent by the PutFile RPC).
-	 *@param IconType -Describes whether the image is static or dynamic
-	 *@param correlationID -A unique ID that correlates each RPCRequest and RPCResponse
-	 * @throws SdlException if an unrecoverable error is encountered
-	 */
-	@SuppressWarnings("unused")
-	public void addCommand(Integer commandID,
-						   String menuText, Integer position,
-						   Vector<String> vrCommands, String IconValue, ImageType IconType, Integer correlationID)
-			throws SdlException {
-		
-		addCommand(commandID, menuText, null, position, vrCommands, IconValue, IconType, correlationID);
-	}
-	
-	/**
-	 *Sends an AddCommand RPCRequest to SDL. Responses are captured through callback on IProxyListener.
-	 *
-	 *@param commandID -Unique command ID of the command to add.
-	 *@param menuText -Menu text for optional sub value containing menu parameters.
-	 *@param position -Menu position for optional sub value containing menu parameters.
-	 *@param IconValue -A static hex icon value or the binary image file name identifier (sent by the PutFile RPC).
-	 *@param IconType -Describes whether the image is static or dynamic
-	 *@param correlationID -A unique ID that correlates each RPCRequest and RPCResponse
-	 * @throws SdlException if an unrecoverable error is encountered
-	 */
-	@SuppressWarnings("unused")
-	public void addCommand(Integer commandID,
-						   String menuText, Integer position, String IconValue, ImageType IconType,
-						   Integer correlationID)
-			throws SdlException {
-		
-		addCommand(commandID, menuText, null, position, null, IconValue, IconType, correlationID);
-	}
-	
-	/**
-	 *Sends an AddCommand RPCRequest to SDL. Responses are captured through callback on IProxyListener.
-	 *
-	 *@param commandID -Unique command ID of the command to add.
-	 *@param menuText -Menu text for optional sub value containing menu parameters.
-	 *@param IconValue -A static hex icon value or the binary image file name identifier (sent by the PutFile RPC).
-	 *@param IconType -Describes whether the image is static or dynamic
-	 *@param correlationID -A unique ID that correlates each RPCRequest and RPCResponse
-	 * @throws SdlException if an unrecoverable error is encountered
-	 */
-	@SuppressWarnings("unused")
-	public void addCommand(Integer commandID,
-						   String menuText, String IconValue, ImageType IconType, Integer correlationID)
-			throws SdlException {
-		
-		addCommand(commandID, menuText, null, null, null, IconValue, IconType, correlationID);
-	}
-	
-	/**
-	 * Sends an AddCommand RPCRequest to SDL. Responses are captured through callback on IProxyListener.
-	 * 
-	 * @param commandID -Unique command ID of the command to add.
-	 * @param menuText -Menu text for optional sub value containing menu parameters.
-	 * @param vrCommands -VR synonyms for this AddCommand.
-	 * @param IconValue -A static hex icon value or the binary image file name identifier (sent by the PutFile RPC).
-	 * @param IconType -Describes whether the image is static or dynamic
-	 * @param correlationID -A unique ID that correlates each RPCRequest and RPCResponse
-	 * @throws SdlException if an unrecoverable error is encountered
-	 */
-	@SuppressWarnings("unused")
-	public void addCommand(Integer commandID,
-						   String menuText, Vector<String> vrCommands, String IconValue, ImageType IconType, Integer correlationID)
-			throws SdlException {
-		
-		addCommand(commandID, menuText, null, null, vrCommands, IconValue, IconType, correlationID);
-	}
-	
-	/**
-	 * Sends an AddCommand RPCRequest to SDL. Responses are captured through callback on IProxyListener.
-	 * 
-	 * @param commandID -Unique command ID of the command to add.
-	 * @param vrCommands -VR synonyms for this AddCommand.
-	 * @param IconValue -A static hex icon value or the binary image file name identifier (sent by the PutFile RPC).
-	 * @param IconType -Describes whether the image is static or dynamic
-	 * @param correlationID -A unique ID that correlates each RPCRequest and RPCResponse
-	 * @throws SdlException if an unrecoverable error is encountered
-	 */
-	@SuppressWarnings("unused")
-	public void addCommand(Integer commandID,
-						   Vector<String> vrCommands, String IconValue, ImageType IconType, Integer correlationID)
-			throws SdlException {
-		
-		addCommand(commandID, null, null, null, vrCommands, IconValue, IconType, correlationID);
-	}
+    /* ******************* Public Helper Methods *************************/
 
-	/*End V1 Enhanced helper*/
-	
-	/**
-	 *Sends an AddCommand RPCRequest to SDL. Responses are captured through callback on IProxyListener.
-	 *
-	 *@param commandID -Unique command ID of the command to add.
-	 *@param menuText -Menu text for optional sub value containing menu parameters.
-	 *@param parentID  -Menu parent ID for optional sub value containing menu parameters.
-	 *@param position  -Menu position for optional sub value containing menu parameters.
-	 *@param vrCommands -VR synonyms for this AddCommand.
-	 *@param correlationID -A unique ID that correlates each RPCRequest and RPCResponse
-	 * @throws SdlException if an unrecoverable error is encountered
-	 */
-	@SuppressWarnings("SameParameterValue")
-	public void addCommand(Integer commandID,
-						   String menuText, Integer parentID, Integer position,
-						   Vector<String> vrCommands, Integer correlationID)
-			throws SdlException {
-		
-		AddCommand msg = RPCRequestFactory.buildAddCommand(commandID, menuText, parentID, position,
-			vrCommands, correlationID);
-		
-		sendRPCRequest(msg);
-	}
-	
-	/**
-	 *Sends an AddCommand RPCRequest to SDL. Responses are captured through callback on IProxyListener.
-	 *
-	 *@param commandID -Unique command ID of the command to add.
-	 *@param menuText -Menu text for optional sub value containing menu parameters.
-	 *@param position  -Menu position for optional sub value containing menu parameters.
-	 *@param vrCommands -VR synonyms for this AddCommand.
-	 *@param correlationID -A unique ID that correlates each RPCRequest and RPCResponse
-	 * @throws SdlException if an unrecoverable error is encountered
-	 */
-	@SuppressWarnings("unused")
-	public void addCommand(Integer commandID,
-						   String menuText, Integer position,
-						   Vector<String> vrCommands, Integer correlationID)
-			throws SdlException {
-		
-		addCommand(commandID, menuText, null, position, vrCommands, correlationID);
-	}
-	
-	/**
-	 *Sends an AddCommand RPCRequest to SDL. Responses are captured through callback on IProxyListener.
-	 *
-	 *@param commandID -Unique command ID of the command to add.
-	 *@param menuText -Menu text for optional sub value containing menu parameters.
-	 *@param position  -Menu position for optional sub value containing menu parameters.
-	 *@param correlationID -A unique ID that correlates each RPCRequest and RPCResponse
-	 * @throws SdlException if an unrecoverable error is encountered
-	 */
-	@SuppressWarnings("unused")
-	public void addCommand(Integer commandID,
-						   String menuText, Integer position,
-						   Integer correlationID)
-			throws SdlException {
-		
-		addCommand(commandID, menuText, null, position, null, correlationID);
-	}
-	
-	/**
-	 *Sends an AddCommand RPCRequest to SDL. Responses are captured through callback on IProxyListener.
-	 *
-	 *@param commandID -Unique command ID of the command to add.
-	 *@param menuText -Menu text for optional sub value containing menu parameters.
-	 *@param correlationID -A unique ID that correlates each RPCRequest and RPCResponse
-	 * @throws SdlException if an unrecoverable error is encountered
-	 */
-	@SuppressWarnings("unused")
-	public void addCommand(Integer commandID,
-						   String menuText, Integer correlationID)
-			throws SdlException {
-		addCommand(commandID, menuText, null, null, (Vector<String>)null, correlationID);
-	}
-	
-	/**
-	 * Sends an AddCommand RPCRequest to SDL. Responses are captured through callback on IProxyListener.
-	 * 
-	 *@param commandID -Unique command ID of the command to add.
-	 *@param menuText -Menu text for optional sub value containing menu parameters.
-	 *@param vrCommands -VR synonyms for this AddCommand.
-	 *@param correlationID -A unique ID that correlates each RPCRequest and RPCResponse
-	 * @throws SdlException if an unrecoverable error is encountered
-	 */
-	@SuppressWarnings("unused")
-	public void addCommand(Integer commandID,
-						   String menuText, Vector<String> vrCommands, Integer correlationID)
-			throws SdlException {
-		
-		addCommand(commandID, menuText, null, null, vrCommands, correlationID);
-	}
-	
-	/**
-	 * Sends an AddCommand RPCRequest to SDL. Responses are captured through callback on IProxyListener.
-	 * 
-	 *@param commandID -Unique command ID of the command to add.
-	 *@param vrCommands -VR synonyms for this AddCommand.
-	 *@param correlationID -A unique ID that correlates each RPCRequest and RPCResponse
-	 * @throws SdlException if an unrecoverable error is encountered
-	 */
-	@SuppressWarnings("unused")
-	public void addCommand(Integer commandID,
-						   Vector<String> vrCommands, Integer correlationID)
-			throws SdlException {
-		
-		addCommand(commandID, null, null, null, vrCommands, correlationID);
-	}
-		
-	
-	/**
-	 * Sends an AddSubMenu RPCRequest to SDL. Responses are captured through callback on IProxyListener.
-	 * 
-	 * @param menuID -Unique ID of the sub menu to add.
-	 * @param menuName -Text to show in the menu for this sub menu.
-	 * @param position -Position within the items that are are at top level of the in application menu.
-	 * @param correlationID -A unique ID that correlates each RPCRequest and RPCResponse
-	 * @throws SdlException if an unrecoverable error is encountered
-	 */
-	@SuppressWarnings("SameParameterValue")
-	public void addSubMenu(Integer menuID, String menuName,
-						   Integer position, Integer correlationID)
-			throws SdlException {
-		
-		AddSubMenu msg = RPCRequestFactory.buildAddSubMenu(menuID, menuName,
-				position, correlationID);
-		
-		sendRPCRequest(msg);
-	}
-	
-	/**
-	 * Sends an AddSubMenu RPCRequest to SDL. Responses are captured through callback on IProxyListener.
-	 * 
-	 * @param menuID -Unique ID of the sub menu to add.
-	 * @param menuName -Text to show in the menu for this sub menu.
-	 * @param correlationID -A unique ID that correlates each RPCRequest and RPCResponse
-	 * @throws SdlException if an unrecoverable error is encountered
-	 */
-	@SuppressWarnings("unused")
-	public void addSubMenu(Integer menuID, String menuName,
-						   Integer correlationID) throws SdlException {
-		
-		addSubMenu(menuID, menuName, null, correlationID);
-	}
-	
-	/*Begin V1 Enhanced helper*/	
-	/**
-	 * Sends an Alert RPCRequest to SDL. Responses are captured through callback on IProxyListener.
-	 * 
-	 * @param ttsText -The text to speech message in the form of a string.
+    /*Begin V1 Enhanced helper*/
+
+    /**
+     *Sends an AddCommand RPCRequest to SDL. Responses are captured through callback on IProxyListener.
+     *
+     *@param commandID -Unique command ID of the command to add.
+     *@param menuText  -Menu text for optional sub value containing menu parameters.
+     *@param parentID  -Menu parent ID for optional sub value containing menu parameters.
+     *@param position  -Menu position for optional sub value containing menu parameters.
+     *@param vrCommands -VR synonyms for this AddCommand.
+     *@param IconValue -A static hex icon value or the binary image file name identifier (sent by the PutFile RPC).
+     *@param IconType -Describes whether the image is static or dynamic
+     *@param correlationID -A unique ID that correlates each RPCRequest and RPCResponse
+     * @throws SdlException if an unrecoverable error is encountered
+     */
+    @SuppressWarnings("SameParameterValue")
+    public void addCommand(Integer commandID,
+                           String menuText, Integer parentID, Integer position,
+                           Vector<String> vrCommands, String IconValue, ImageType IconType, Integer correlationID)
+            throws SdlException {
+
+        AddCommand msg = RPCRequestFactory.buildAddCommand(commandID, menuText, parentID, position,
+                vrCommands, IconValue, IconType, correlationID);
+
+        sendRPCRequest(msg);
+    }
+
+    /**
+     *Sends an AddCommand RPCRequest to SDL. Responses are captured through callback on IProxyListener.
+     *
+     *@param commandID -Unique command ID of the command to add.
+     *@param menuText -Menu text for optional sub value containing menu parameters.
+     *@param position -Menu position for optional sub value containing menu parameters.
+     *@param vrCommands -VR synonyms for this AddCommand.
+     *@param IconValue -A static hex icon value or the binary image file name identifier (sent by the PutFile RPC).
+     *@param IconType -Describes whether the image is static or dynamic
+     *@param correlationID -A unique ID that correlates each RPCRequest and RPCResponse
+     * @throws SdlException if an unrecoverable error is encountered
+     */
+    @SuppressWarnings("unused")
+    public void addCommand(Integer commandID,
+                           String menuText, Integer position,
+                           Vector<String> vrCommands, String IconValue, ImageType IconType, Integer correlationID)
+            throws SdlException {
+
+        addCommand(commandID, menuText, null, position, vrCommands, IconValue, IconType, correlationID);
+    }
+
+    /**
+     *Sends an AddCommand RPCRequest to SDL. Responses are captured through callback on IProxyListener.
+     *
+     *@param commandID -Unique command ID of the command to add.
+     *@param menuText -Menu text for optional sub value containing menu parameters.
+     *@param position -Menu position for optional sub value containing menu parameters.
+     *@param IconValue -A static hex icon value or the binary image file name identifier (sent by the PutFile RPC).
+     *@param IconType -Describes whether the image is static or dynamic
+     *@param correlationID -A unique ID that correlates each RPCRequest and RPCResponse
+     * @throws SdlException if an unrecoverable error is encountered
+     */
+    @SuppressWarnings("unused")
+    public void addCommand(Integer commandID,
+                           String menuText, Integer position, String IconValue, ImageType IconType,
+                           Integer correlationID)
+            throws SdlException {
+
+        addCommand(commandID, menuText, null, position, null, IconValue, IconType, correlationID);
+    }
+
+    /**
+     *Sends an AddCommand RPCRequest to SDL. Responses are captured through callback on IProxyListener.
+     *
+     *@param commandID -Unique command ID of the command to add.
+     *@param menuText -Menu text for optional sub value containing menu parameters.
+     *@param IconValue -A static hex icon value or the binary image file name identifier (sent by the PutFile RPC).
+     *@param IconType -Describes whether the image is static or dynamic
+     *@param correlationID -A unique ID that correlates each RPCRequest and RPCResponse
+     * @throws SdlException if an unrecoverable error is encountered
+     */
+    @SuppressWarnings("unused")
+    public void addCommand(Integer commandID,
+                           String menuText, String IconValue, ImageType IconType, Integer correlationID)
+            throws SdlException {
+
+        addCommand(commandID, menuText, null, null, null, IconValue, IconType, correlationID);
+    }
+
+    /**
+     * Sends an AddCommand RPCRequest to SDL. Responses are captured through callback on IProxyListener.
+     *
+     * @param commandID -Unique command ID of the command to add.
+     * @param menuText -Menu text for optional sub value containing menu parameters.
+     * @param vrCommands -VR synonyms for this AddCommand.
+     * @param IconValue -A static hex icon value or the binary image file name identifier (sent by the PutFile RPC).
+     * @param IconType -Describes whether the image is static or dynamic
+     * @param correlationID -A unique ID that correlates each RPCRequest and RPCResponse
+     * @throws SdlException if an unrecoverable error is encountered
+     */
+    @SuppressWarnings("unused")
+    public void addCommand(Integer commandID,
+                           String menuText, Vector<String> vrCommands, String IconValue, ImageType IconType, Integer correlationID)
+            throws SdlException {
+
+        addCommand(commandID, menuText, null, null, vrCommands, IconValue, IconType, correlationID);
+    }
+
+    /**
+     * Sends an AddCommand RPCRequest to SDL. Responses are captured through callback on IProxyListener.
+     *
+     * @param commandID -Unique command ID of the command to add.
+     * @param vrCommands -VR synonyms for this AddCommand.
+     * @param IconValue -A static hex icon value or the binary image file name identifier (sent by the PutFile RPC).
+     * @param IconType -Describes whether the image is static or dynamic
+     * @param correlationID -A unique ID that correlates each RPCRequest and RPCResponse
+     * @throws SdlException if an unrecoverable error is encountered
+     */
+    @SuppressWarnings("unused")
+    public void addCommand(Integer commandID,
+                           Vector<String> vrCommands, String IconValue, ImageType IconType, Integer correlationID)
+            throws SdlException {
+
+        addCommand(commandID, null, null, null, vrCommands, IconValue, IconType, correlationID);
+    }
+
+    /*End V1 Enhanced helper*/
+
+    /**
+     *Sends an AddCommand RPCRequest to SDL. Responses are captured through callback on IProxyListener.
+     *
+     *@param commandID -Unique command ID of the command to add.
+     *@param menuText -Menu text for optional sub value containing menu parameters.
+     *@param parentID  -Menu parent ID for optional sub value containing menu parameters.
+     *@param position  -Menu position for optional sub value containing menu parameters.
+     *@param vrCommands -VR synonyms for this AddCommand.
+     *@param correlationID -A unique ID that correlates each RPCRequest and RPCResponse
+     * @throws SdlException if an unrecoverable error is encountered
+     */
+    @SuppressWarnings("SameParameterValue")
+    public void addCommand(Integer commandID,
+                           String menuText, Integer parentID, Integer position,
+                           Vector<String> vrCommands, Integer correlationID)
+            throws SdlException {
+
+        AddCommand msg = RPCRequestFactory.buildAddCommand(commandID, menuText, parentID, position,
+                vrCommands, correlationID);
+
+        sendRPCRequest(msg);
+    }
+
+    /**
+     *Sends an AddCommand RPCRequest to SDL. Responses are captured through callback on IProxyListener.
+     *
+     *@param commandID -Unique command ID of the command to add.
+     *@param menuText -Menu text for optional sub value containing menu parameters.
+     *@param position  -Menu position for optional sub value containing menu parameters.
+     *@param vrCommands -VR synonyms for this AddCommand.
+     *@param correlationID -A unique ID that correlates each RPCRequest and RPCResponse
+     * @throws SdlException if an unrecoverable error is encountered
+     */
+    @SuppressWarnings("unused")
+    public void addCommand(Integer commandID,
+                           String menuText, Integer position,
+                           Vector<String> vrCommands, Integer correlationID)
+            throws SdlException {
+
+        addCommand(commandID, menuText, null, position, vrCommands, correlationID);
+    }
+
+    /**
+     *Sends an AddCommand RPCRequest to SDL. Responses are captured through callback on IProxyListener.
+     *
+     *@param commandID -Unique command ID of the command to add.
+     *@param menuText -Menu text for optional sub value containing menu parameters.
+     *@param position  -Menu position for optional sub value containing menu parameters.
+     *@param correlationID -A unique ID that correlates each RPCRequest and RPCResponse
+     * @throws SdlException if an unrecoverable error is encountered
+     */
+    @SuppressWarnings("unused")
+    public void addCommand(Integer commandID,
+                           String menuText, Integer position,
+                           Integer correlationID)
+            throws SdlException {
+
+        addCommand(commandID, menuText, null, position, null, correlationID);
+    }
+
+    /**
+     *Sends an AddCommand RPCRequest to SDL. Responses are captured through callback on IProxyListener.
+     *
+     *@param commandID -Unique command ID of the command to add.
+     *@param menuText -Menu text for optional sub value containing menu parameters.
+     *@param correlationID -A unique ID that correlates each RPCRequest and RPCResponse
+     * @throws SdlException if an unrecoverable error is encountered
+     */
+    @SuppressWarnings("unused")
+    public void addCommand(Integer commandID,
+                           String menuText, Integer correlationID)
+            throws SdlException {
+        addCommand(commandID, menuText, null, null, (Vector<String>)null, correlationID);
+    }
+
+    /**
+     * Sends an AddCommand RPCRequest to SDL. Responses are captured through callback on IProxyListener.
+     *
+     *@param commandID -Unique command ID of the command to add.
+     *@param menuText -Menu text for optional sub value containing menu parameters.
+     *@param vrCommands -VR synonyms for this AddCommand.
+     *@param correlationID -A unique ID that correlates each RPCRequest and RPCResponse
+     * @throws SdlException if an unrecoverable error is encountered
+     */
+    @SuppressWarnings("unused")
+    public void addCommand(Integer commandID,
+                           String menuText, Vector<String> vrCommands, Integer correlationID)
+            throws SdlException {
+
+        addCommand(commandID, menuText, null, null, vrCommands, correlationID);
+    }
+
+    /**
+     * Sends an AddCommand RPCRequest to SDL. Responses are captured through callback on IProxyListener.
+     *
+     *@param commandID -Unique command ID of the command to add.
+     *@param vrCommands -VR synonyms for this AddCommand.
+     *@param correlationID -A unique ID that correlates each RPCRequest and RPCResponse
+     * @throws SdlException if an unrecoverable error is encountered
+     */
+    @SuppressWarnings("unused")
+    public void addCommand(Integer commandID,
+                           Vector<String> vrCommands, Integer correlationID)
+            throws SdlException {
+
+        addCommand(commandID, null, null, null, vrCommands, correlationID);
+    }
+
+
+    /**
+     * Sends an AddSubMenu RPCRequest to SDL. Responses are captured through callback on IProxyListener.
+     *
+     * @param menuID -Unique ID of the sub menu to add.
+     * @param menuName -Text to show in the menu for this sub menu.
+     * @param position -Position within the items that are are at top level of the in application menu.
+     * @param correlationID -A unique ID that correlates each RPCRequest and RPCResponse
+     * @throws SdlException if an unrecoverable error is encountered
+     */
+    @SuppressWarnings("SameParameterValue")
+    public void addSubMenu(Integer menuID, String menuName,
+                           Integer position, Integer correlationID)
+            throws SdlException {
+
+        AddSubMenu msg = RPCRequestFactory.buildAddSubMenu(menuID, menuName,
+                position, correlationID);
+
+        sendRPCRequest(msg);
+    }
+
+    /**
+     * Sends an AddSubMenu RPCRequest to SDL. Responses are captured through callback on IProxyListener.
+     *
+     * @param menuID -Unique ID of the sub menu to add.
+     * @param menuName -Text to show in the menu for this sub menu.
+     * @param correlationID -A unique ID that correlates each RPCRequest and RPCResponse
+     * @throws SdlException if an unrecoverable error is encountered
+     */
+    @SuppressWarnings("unused")
+    public void addSubMenu(Integer menuID, String menuName,
+                           Integer correlationID) throws SdlException {
+
+        addSubMenu(menuID, menuName, null, correlationID);
+    }
+
+    /*Begin V1 Enhanced helper*/
+    /**
+     * Sends an Alert RPCRequest to SDL. Responses are captured through callback on IProxyListener.
+     *
+     * @param ttsText -The text to speech message in the form of a string.
 	 * @param alertText1 -The first line of the alert text field.
 	 * @param alertText2 -The second line of the alert text field.
 	 * @param alertText3 -The optional third line of the alert text field.
 	 * @param playTone -Defines if tone should be played.
-	 * @param duration -Timeout in milliseconds.
+     * @param duration -Timeout in milliseconds.
 	 * @param softButtons -A list of App defined SoftButtons.
 	 * @param correlationID -A unique ID that correlates each RPCRequest and RPCResponse
 	 * @throws SdlException if an unrecoverable error is encountered
@@ -4842,7 +5094,7 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 		sendRPCRequest(msg);
 	}
 	
-	/**
+    /**
 	 * Sends an Alert RPCRequest to SDL. Responses are captured through callback on IProxyListener.
 	 * 
 	 * @param ttsChunks -Text/phonemes to speak in the form of ttsChunks.
@@ -6286,11 +6538,16 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 	 */
 	@SuppressWarnings("unused")
 	public TransportType getCurrentTransportType() throws IllegalStateException {
-		if (sdlSession  == null) {
+		if (sdlSession  == null && _legacySession == null) {
 			throw new IllegalStateException("Incorrect state of SdlProxyBase: Calling for getCurrentTransportType() while connection is not initialized");
 		}
-			
-		return sdlSession.getCurrentTransportType();
+
+		if (sdlSession != null) {
+            return sdlSession.getCurrentTransportType();
+        } else if (_legacySession != null) {
+		    return _legacySession.getCurrentTransportType();
+        }
+        return null;
 	}
 	
 	public void setSdlSecurityClassList(List<Class<? extends SdlSecurityBase>> list) {
@@ -6314,18 +6571,27 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 	public void addServiceListener(SessionType serviceType, ISdlServiceListener sdlServiceListener){
 		if(serviceType != null && sdlSession != null && sdlServiceListener != null){
 			sdlSession.addServiceListener(serviceType, sdlServiceListener);
-		}
+		} else if (_legacySession != null) {
+		    _legacySession.addServiceListener(serviceType, sdlServiceListener);
+        }
 	}
 
 	public void removeServiceListener(SessionType serviceType, ISdlServiceListener sdlServiceListener){
 		if(serviceType != null && sdlSession != null && sdlServiceListener != null){
 			sdlSession.removeServiceListener(serviceType, sdlServiceListener);
-		}
+		} else if (_legacySession != null) {
+		    _legacySession.removeServiceListener(serviceType, sdlServiceListener);
+        }
 	}
 
 	@SuppressWarnings("unused")
 	public VideoStreamingParameters getAcceptedVideoParams(){
-		return sdlSession.getAcceptedVideoParams();
+	    if (sdlSession != null) {
+            return sdlSession.getAcceptedVideoParams();
+        } else if (_legacySession != null) {
+	        return _legacySession.getAcceptedVideoParams();
+        }
+        return null;
 	}
 
 	public IProxyListenerBase getProxyListener()
@@ -6418,12 +6684,13 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 			});
 		}
 
-		public void startVideoStreaming(Class<? extends SdlRemoteDisplay> remoteDisplayClass, VideoStreamingParameters parameters, boolean encrypted){
+		public void startVideoStreaming(final Class<? extends SdlRemoteDisplay> remoteDisplayClass, final VideoStreamingParameters parameters, final boolean encrypted){
 			streamListener = startVideoStream(encrypted,parameters);
 			if(streamListener == null){
 				Log.e(TAG, "Error starting video service");
 				return;
 			}
+
 			VideoStreamingCapability capability = (VideoStreamingCapability)_systemCapabilityManager.getCapability(SystemCapabilityType.VIDEO_STREAMING);
 			if(capability != null && capability.getIsHapticSpatialDataSupported()){
 				hapticManager = new HapticInterfaceManager(internalInterface);
@@ -6462,6 +6729,7 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 		private void createRemoteDisplay(final Display disp){
 			try{
 				if (disp == null){
+					Log.e(TAG, "createRemoteDisplay failed; display is null");
 					return;
 				}
 
@@ -6469,6 +6737,7 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 				if (remoteDisplay != null && remoteDisplay.getDisplay() != disp) {
 					remoteDisplay.dismissPresentation();
 				}
+				Log.d(TAG, "about createRemoteDisplay");
 
 				FutureTask<Boolean> fTask =  new FutureTask<Boolean>( new SdlRemoteDisplay.Creator(context, disp, remoteDisplay, remoteDisplayClass, new SdlRemoteDisplay.Callback(){
 					@Override
@@ -6488,7 +6757,15 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 						ImageResolution resolution = null;
 						if(getWiProVersion()>=5){ //At this point we should already have the capability
 							VideoStreamingCapability capability = (VideoStreamingCapability)_systemCapabilityManager.getCapability(SystemCapabilityType.VIDEO_STREAMING);
-							resolution = capability.getPreferredResolution();
+							if (capability != null) {
+								resolution = capability.getPreferredResolution();
+							} else {
+								// fallback?
+								DisplayCapabilities dispCap = (DisplayCapabilities) _systemCapabilityManager.getCapability(SystemCapabilityType.DISPLAY);
+								if (dispCap != null) {
+									resolution = (dispCap.getScreenParams().getImageResolution());
+								}
+							}
 						}else {
 							DisplayCapabilities dispCap = (DisplayCapabilities) _systemCapabilityManager.getCapability(SystemCapabilityType.DISPLAY);
 							if (dispCap != null) {

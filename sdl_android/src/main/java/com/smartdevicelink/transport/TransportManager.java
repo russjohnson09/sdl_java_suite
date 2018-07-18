@@ -8,6 +8,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.os.Handler;
+import android.os.Looper;
 import android.os.Message;
 import android.os.Parcelable;
 import android.util.Log;
@@ -23,6 +24,7 @@ public class TransportManager {
 
     private final Object TRANSPORT_STATUS_LOCK;
 
+    TransportBrokerThread _brokerThread;
     TransportBrokerImpl transport;
     final HashMap<TransportType, Boolean> transportStatus;
     final TransportEventListener transportListener;
@@ -58,7 +60,15 @@ public class TransportManager {
 
         RouterServiceValidator validator = new RouterServiceValidator(config.context,config.service);
         if(validator.validate()){
-            transport = new TransportBrokerImpl(config.context, config.appId,config.service);
+            //transport = new TransportBrokerImpl(config.context, config.appId,config.service);
+            _brokerThread = new TransportBrokerThread(config.context, config.appId, config.service);
+            _brokerThread.start();
+            try {
+                Thread.sleep(100);
+            } catch(InterruptedException e) {
+                e.printStackTrace();
+            }
+            transport = _brokerThread.getBroker();
         }else{
             enterLegacyMode("Router service is not trusted. Entering legacy mode");
             //throw new SecurityException("Unable to trust router service");
@@ -91,7 +101,7 @@ public class TransportManager {
      * @return
      */
     public boolean isConnected(TransportType transportType){
-        if(transportType != null){
+        if(transportType != null && transportStatus != null){
             return transportStatus.get(transportType);
         }
         return transportStatus.values().contains(true);
@@ -125,6 +135,7 @@ public class TransportManager {
     }
 
     public void requestNewSession(TransportType transportType){
+        Log.d(TAG, "requestNewSession : transportType=" + transportType.name());
         if(transport!=null){
             transport.requestNewSession(transportType);
         }else if(legacyBluetoothTransport != null && !TransportType.BLUETOOTH.equals(transportType)){
@@ -140,7 +151,7 @@ public class TransportManager {
 
         @Override
         public boolean onHardwareConnected(TransportType[] types) {
-            Log.d(TAG, "onHardwareConnected");
+            Log.d(TAG, "onHardwareConnected: " + types.toString());
             super.onHardwareConnected(types);
             synchronized (TRANSPORT_STATUS_LOCK){
                 resetTransports();
@@ -180,6 +191,65 @@ public class TransportManager {
             if(packet!=null){
                 transportListener.onPacketReceived((SdlPacket)packet);
             }
+        }
+    }
+
+    private class TransportBrokerThread extends Thread {
+        private boolean _connected;
+        private TransportBrokerImpl _broker;
+        final Context _context;
+        final String _appId;
+        final ComponentName _service;
+        Looper _threadLooper;
+
+        public TransportBrokerThread(Context context, String appId, ComponentName service) {
+            super();
+            this._context = context;
+            this._appId = appId;
+            this._service = service;
+        }
+
+        public void startConnection() {
+            synchronized(this) {
+                _connected = false;
+                if (_broker != null) {
+                    try {
+                        _broker.start();
+                    } catch(Exception e) {
+                        Log.e(TAG, "Error starting Transport: " + e.getMessage());
+                    }
+                }
+            }
+        }
+
+        public synchronized void cancel() {
+            if (_broker == null) {
+                _broker.stop();
+                _broker = null;
+            }
+            _connected = false;
+            if (_threadLooper != null) {
+                _threadLooper.quitSafely();
+                _threadLooper = null;
+            }
+        }
+
+        @Override
+        public void run() {
+            Looper.prepare();
+            if (_broker == null) {
+                synchronized(this) {
+                    _broker = new TransportBrokerImpl(_context, _appId, _service);
+                    this.notify();
+                }
+                _threadLooper = Looper.myLooper();
+                Looper.loop();
+            }
+
+        }
+
+        public final TransportBrokerImpl getBroker() {
+            return _broker;
         }
     }
 

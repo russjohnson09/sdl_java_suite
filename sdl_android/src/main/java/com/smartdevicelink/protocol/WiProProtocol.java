@@ -6,6 +6,7 @@ import com.smartdevicelink.SdlConnection.SdlConnection;
 import com.smartdevicelink.SdlConnection.SdlSession;
 import com.smartdevicelink.exception.SdlException;
 import com.smartdevicelink.exception.SdlExceptionCause;
+import com.smartdevicelink.localdebug.DebugConst;
 import com.smartdevicelink.protocol.enums.ControlFrameTags;
 import com.smartdevicelink.protocol.enums.FrameDataControlFrameType;
 import com.smartdevicelink.protocol.enums.FrameType;
@@ -210,6 +211,7 @@ public class WiProProtocol extends AbstractProtocol {
 
     @Deprecated
 	public void StartProtocolSession(SessionType sessionType) {
+		DebugConst.log(TAG, "StartProtocolSession got called");
 		SdlPacket header = SdlPacketFactory.createStartSession(sessionType, 0x00, getMajorVersionByte(), (byte) 0x00, false);
 		if(sessionType.equals(SessionType.RPC)){ // check for RPC session
 			header.putTag(ControlFrameTags.RPC.StartService.PROTOCOL_VERSION, MAX_PROTOCOL_VERSION.toString());
@@ -218,6 +220,7 @@ public class WiProProtocol extends AbstractProtocol {
 	} // end-method
 
 	private void sendStartProtocolSessionACK(SessionType sessionType, byte sessionID) {
+		DebugConst.log(TAG, "sendStartProtocolSessionACK(" + sessionType.getName() + "got called");
 		SdlPacket header = SdlPacketFactory.createStartSessionACK(sessionType, sessionID, 0x00, getMajorVersionByte());
 		handlePacketToSend(header);
 	} // end-method
@@ -562,7 +565,7 @@ public class WiProProtocol extends AbstractProtocol {
 
 						//Check to make sure this is a transport we are willing to accept
 						TransportType transportType = packet.getTransportType();
-						if(transportType == null || !requestedPrimaryTransports.contains(transportType)){
+						if(transportType == null || (requestedPrimaryTransports != null && !requestedPrimaryTransports.contains(transportType))){
 							onTransportNotAccepted("Transport is not in requested primary transports");
 							return;
 						}
@@ -581,7 +584,7 @@ public class WiProProtocol extends AbstractProtocol {
 									return;
 								}
 							} //else we are good to go
-							if(activeTransports.get(SessionType.RPC) == null) {	//Might be a better way to handle this
+							if(activeTransports != null && activeTransports.get(SessionType.RPC) == null) {	//Might be a better way to handle this
 								availableTransports.add(transportType);
 								activeTransports.put(SessionType.RPC, transportType);
 								activeTransports.put(SessionType.BULK_DATA, transportType);
@@ -615,8 +618,10 @@ public class WiProProtocol extends AbstractProtocol {
 					if(requiresHighBandwidth
 							&& TransportType.BLUETOOTH.equals(transportType)){
 						//transport can't support high bandwidth
-						onTransportNotAccepted(transportType + "can't support high bandwidth requirement, and secondary transport not supported in this protocol version");
-						return;
+						// [shiniwa] let's move on for debugging purpose
+						Log.d(TAG, "using BT for highBandwidthRequired session. Moving on for debugging purpose");
+						//onTransportNotAccepted(transportType + "can't support high bandwidth requirement, and secondary transport not supported in this protocol version");
+						//return;
 					}
 					//If version < 5 and transport is acceptable we need to just add these
 					activeTransports.put(SessionType.RPC, transportType);
@@ -646,6 +651,20 @@ public class WiProProtocol extends AbstractProtocol {
 					rejectedParams = (List<String>) packet.getTag(rejectedTag);
 				}
 				if (serviceType.eq(SessionType.NAV) || serviceType.eq(SessionType.PCM)) {
+					// local logging...
+					String rejPrm = "";
+					if ( rejectedParams != null ) {
+						rejPrm = "cnt:" + rejectedParams.size() + " [";
+						for ( String s : rejectedParams ) {
+							rejPrm += s + ",";
+						}
+						rejPrm += "]";
+					} else {
+						rejPrm = null;
+					}
+					String mes = "WiProProtocol **NACK** /sessionId:" + (byte)packet.getSessionId() +
+							" /rejParam:" + rejPrm;
+					DebugConst.log("WiProProtocol", mes);
 					handleProtocolSessionNACKed(serviceType, (byte)packet.getSessionId(), getMajorVersionByte(), "", rejectedParams);
 				} else {
 					handleProtocolError("Got StartSessionNACK for protocol sessionID=" + packet.getSessionId(), null);
@@ -730,6 +749,7 @@ public class WiProProtocol extends AbstractProtocol {
 	@Deprecated
 	public void StartProtocolService(SessionType sessionType, byte sessionID, boolean isEncrypted) {
 		SdlPacket header = SdlPacketFactory.createStartSession(sessionType, 0x00, getMajorVersionByte(), sessionID, isEncrypted);
+		Log.d(TAG, String.format("StartProtocolService sessionType=%s, ID=%d", sessionType.getName(), sessionID));
 		if(sessionType.equals(SessionType.NAV)){
 			SdlSession videoSession =  null;
 			if(sessionWeakReference != null){
@@ -740,6 +760,7 @@ public class WiProProtocol extends AbstractProtocol {
 			if(videoSession != null){
 				ImageResolution desiredResolution = videoSession.getDesiredVideoParams().getResolution();
 				VideoStreamingFormat desiredFormat = videoSession.getDesiredVideoParams().getFormat();
+				Log.d(TAG, "got videoSession; Resolution=" + desiredResolution.toString() + " Format=" + desiredFormat.toString());
 				if(desiredResolution != null){
 					header.putTag(ControlFrameTags.Video.StartService.WIDTH, desiredResolution.getResolutionWidth());
 					header.putTag(ControlFrameTags.Video.StartService.HEIGHT, desiredResolution.getResolutionHeight());
@@ -748,6 +769,8 @@ public class WiProProtocol extends AbstractProtocol {
 					header.putTag(ControlFrameTags.Video.StartService.VIDEO_CODEC, desiredFormat.getCodec().toString());
 					header.putTag(ControlFrameTags.Video.StartService.VIDEO_PROTOCOL, desiredFormat.getProtocol().toString());
 				}
+			} else {
+				Log.e(TAG, "videoSession is null");
 			}
 		}
 		handlePacketToSend(header);
@@ -784,6 +807,8 @@ public class WiProProtocol extends AbstractProtocol {
 					header.putTag(ControlFrameTags.Video.StartService.VIDEO_CODEC, desiredFormat.getCodec().toString());
 					header.putTag(ControlFrameTags.Video.StartService.VIDEO_PROTOCOL, desiredFormat.getProtocol().toString());
 				}
+			} else {
+				Log.e(TAG, "videoSession is null");
 			}
 		}
 		handlePacketToSend(header);

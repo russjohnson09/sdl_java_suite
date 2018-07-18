@@ -22,6 +22,7 @@ import com.smartdevicelink.protocol.SdlPacket;
 import com.smartdevicelink.transport.enums.TransportType;
 import com.smartdevicelink.transport.utl.ByteAraryMessageAssembler;
 import com.smartdevicelink.transport.utl.ByteArrayMessageSpliter;
+import com.smartdevicelink.localdebug.DebugConst;
 
 import java.lang.ref.WeakReference;
 import java.text.SimpleDateFormat;
@@ -55,7 +56,26 @@ public class TransportBroker {
 	
 	private ServiceConnection routerConnection;
 	private int routerServiceVersion = 1;
-	
+
+	private static class Log {
+		public static void e(String tag, String msg) {
+			android.util.Log.e(tag, msg);
+			DebugConst.log(tag, msg);
+		}
+		public static void w(String tag, String msg) {
+			android.util.Log.w(tag, msg);
+			DebugConst.log(tag, msg);
+		}
+		public static void i(String tag, String msg) {
+			android.util.Log.i(tag, msg);
+			DebugConst.log(tag, msg);
+		}
+		public static void d(String tag, String msg) {
+			android.util.Log.d(tag, msg);
+			DebugConst.log(tag, msg);
+		}
+	}
+
 	private void initRouterConnection(){
 		routerConnection= new ServiceConnection() {
 
@@ -87,11 +107,12 @@ public class TransportBroker {
     		Log.w(TAG, "Attempted to send null message");
     		return false;
     	}
-    	//Log.i(TAG, "Attempting to send message type - " + message.what);
+    	//Log.d(TAG, "Attempting to send message type - " + message.what);
     	if(isBound && routerServiceMessenger !=null){
     		if(registeredWithRouterService 
     				|| message.what == TransportConstants.ROUTER_REGISTER_CLIENT){ //We can send a message if we are registered or are attempting to register
     			try {
+    				//Log.d(TAG, "about sending to routerServiceMessenger: message=" + message.what);
     				routerServiceMessenger.send(message);
     				return true;
     			} catch (RemoteException e) {
@@ -167,6 +188,7 @@ public class TransportBroker {
 			}
             
         	//Find out what message we have and what to do with it
+			DebugConst.log(TAG, "ClientHandler got msg:" + msg.what + " thread=" + Thread.currentThread().getId());
             switch (msg.what) {
             	case TransportConstants.ROUTER_REGISTER_CLIENT_RESPONSE:
             		switch(msg.arg1){
@@ -313,6 +335,7 @@ public class TransportBroker {
 		@SuppressLint("SimpleDateFormat")
 		public TransportBroker(Context context, String appId, ComponentName service){
 			synchronized(INIT_LOCK){
+				Log.d(TAG, "TransportBroker: thread=" + Thread.currentThread().getId());
 				clientMessenger = new Messenger(new ClientHandler(this));
 				initRouterConnection();
 				//So the user should have set the AppId, lets define where the intents need to be sent
@@ -461,7 +484,8 @@ public class TransportBroker {
 		
 		
 		public boolean sendPacketToRouterService(SdlPacket packet){ //We use ints because that is all that is supported by the outputstream class
-			//Log.d(TAG,whereToReply + "Sending packet to router service");
+			//Log.d(TAG,"whereToReply:" + whereToReply + "; Sending packet to router service");
+			//Log.d(TAG, "packet=" + packet.toString());
 			
 			if(routerServiceMessenger==null){
 				Log.d(TAG,whereToReply + " tried to send packet, but no where to send");
@@ -478,9 +502,10 @@ public class TransportBroker {
 			if(bytes.length<ByteArrayMessageSpliter.MAX_BINDER_SIZE){//Determine if this is under the packet length.
 				Message message = Message.obtain(); //Do we need to always obtain new? or can we just swap bundles?
 				message.what = TransportConstants.ROUTER_SEND_PACKET;
+				message.replyTo = this.clientMessenger;
 				Bundle bundle = new Bundle();
 				if(routerServiceVersion< TransportConstants.RouterServiceVersions.APPID_STRING){
-					bundle.putLong(TransportConstants.APP_ID_EXTRA,convertAppId(appId));
+					bundle.putLong(TransportConstants.APP_ID_EXTRA,coWiProWinvertAppId(appId));
 				}
 				bundle.putString(TransportConstants.APP_ID_EXTRA_STRING, appId);
 				bundle.putByteArray(TransportConstants.BYTES_TO_SEND_EXTRA_NAME, bytes); //Do we just change this to the args and objs
@@ -492,7 +517,7 @@ public class TransportBroker {
 					Log.d(TAG, "Sending packet on transport " + packet.getTransportType().name());
 					bundle.putString(TransportConstants.TRANSPORT_FOR_PACKET, packet.getTransportType().name());
 				}else{
-					Log.d(TAG, "No transport to be found");
+					//Log.d(TAG, "No transport to be found; rely on RouterService to choose the appropriate transport.");
 				}
 				message.setData(bundle);
 				

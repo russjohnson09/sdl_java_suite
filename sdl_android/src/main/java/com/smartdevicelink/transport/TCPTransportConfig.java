@@ -5,7 +5,7 @@ import com.smartdevicelink.transport.enums.TransportType;
 /**
  * Container of TCP transport specific configuration. 
  */
-public final class TCPTransportConfig extends BaseTransportConfig {
+public class TCPTransportConfig extends BaseTransportConfig {
 	
 	/**
 	 * Value of port to use in TCP connection.

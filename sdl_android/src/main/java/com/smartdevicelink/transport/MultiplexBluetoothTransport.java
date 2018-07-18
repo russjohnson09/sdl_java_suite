@@ -53,7 +53,9 @@ import com.smartdevicelink.transport.enums.TransportType;
 public class MultiplexBluetoothTransport extends MultiplexBaseTransport{
     //finals
 	private static final String TAG = "Bluetooth Transport";
-    private static final UUID SERVER_UUID= new UUID(0x936DA01F9ABD4D9DL, 0x80C702AF85C822A8L);
+    //private static final UUID SERVER_UUID= new UUID(0x936DA01F9ABD4D9DL, 0x80C702AF85C822A8L);
+    // Toyota UUID
+    private static final UUID SERVER_UUID= new UUID(0xCD6A760D4539441CL, 0xB04235FEB02E2765L);
     // Name for the SDP record when creating server socket
     private static final String NAME_SECURE =" SdlRouterService";
     // Key names received from the BluetoothSerialServer Handler
@@ -146,7 +148,7 @@ public class MultiplexBluetoothTransport extends MultiplexBaseTransport{
      * Start the chat service. Specifically start AcceptThread to begin a
      * session in listening (server) mode. Called by the Activity onResume() */
     public synchronized void start() {
-    	//Log.d(TAG, "Starting up Bluetooth Server to Listen");
+    	Log.d(TAG, "Starting up Bluetooth Server to Listen");
         // Cancel any thread attempting to make a connection
         if (mConnectThread != null) {mConnectThread.cancel(); mConnectThread = null;}
 
@@ -160,7 +162,7 @@ public class MultiplexBluetoothTransport extends MultiplexBaseTransport{
         if (getAcceptThread() == null
         		&& mAdapter != null
         		&&  mAdapter.isEnabled()) {
-        	//Log.d(TAG, "Secure thread was null, attempting to create new");
+        	Log.d(TAG, "Secure thread was null, attempting to create new");
         	setAcceptThread(new AcceptThread(true));
             if(getAcceptThread()!=null){
             	setState(STATE_LISTEN);
@@ -349,7 +351,7 @@ public class MultiplexBluetoothTransport extends MultiplexBaseTransport{
         @SuppressLint("NewApi")
 		public AcceptThread(boolean secure) {
         	synchronized(THREAD_LOCK){
-            	//Log.d(TAG, "Creating an Accept Thread");
+            	Log.d(TAG, "Creating an Accept Thread for UUID=" + SERVER_UUID.toString());
             	BluetoothServerSocket tmp = null;
             	mSocketType = secure ? "Secure":"Insecure";
             	// Create a new listening server socket
@@ -755,20 +757,20 @@ public class MultiplexBluetoothTransport extends MultiplexBaseTransport{
             while (true) {
                 try {
                     bytesRead = mmInStream.read(buffer);
-                   // Log.i(getClass().getName(), "Received " + bytesRead + " bytes from Bluetooth");
+                   Log.i(getClass().getName(), "Received " + bytesRead + " bytes from Bluetooth");
                     for (int i = 0; i < bytesRead; i++) {
                         input = buffer[i];
 
                         // Send the response of what we received
                         stateProgress = psm.handleByte(input);
                         if (!stateProgress) { //We are trying to weed through the bad packet info until we get something
-                            //Log.w(TAG, "Packet State Machine did not move forward from state - "+ psm.getState()+". PSM being Reset.");
+                            Log.w(TAG, "Packet State Machine did not move forward from state - "+ psm.getState()+". PSM being Reset.");
                             psm.reset();
                             continue;
                         }
 
                         if (psm.getState() == SdlPsm.FINISHED_STATE) {
-                            //Log.d(TAG, "Packet formed, sending off");
+                            Log.d(TAG, "Packet formed, sending off");
                             SdlPacket packet = psm.getFormedPacket();
                             packet.setTransportType(TransportType.BLUETOOTH);
                             handler.obtainMessage(SdlRouterService.MESSAGE_READ, packet).sendToTarget();

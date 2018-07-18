@@ -52,11 +52,11 @@ public class SdlSession implements  IProtocolListener, TransportManager.Transpor
 	private static final String TAG = "SdlSession";
 
 
-	private byte sessionId;
-	private ISdlConnectionListener sessionListener;
-	private BaseTransportConfig transportConfig;
+	protected byte sessionId;
+	protected ISdlConnectionListener sessionListener;
+	protected BaseTransportConfig transportConfig;
 
-    private LockScreenManager lockScreenMan  = new LockScreenManager();
+    protected LockScreenManager lockScreenMan  = new LockScreenManager();
     private SdlSecurityBase sdlSecurity = null;
 	private final static int BUFF_READ_SIZE = 1024;
     private int sessionHashId = 0;
@@ -75,6 +75,7 @@ public class SdlSession implements  IProtocolListener, TransportManager.Transpor
 
 	protected TransportManager transportManager;
 	protected WiProProtocol wiProProtocol;
+	Object PROTOCOL_REFERENCE_LOCK = new Object();
 
 
 	@Deprecated
@@ -90,13 +91,15 @@ public class SdlSession implements  IProtocolListener, TransportManager.Transpor
 	public SdlSession(ISdlConnectionListener listener, MultiplexTransportConfig config){
 		transportConfig = config;
 		sessionListener = listener;
-		wiProProtocol = new WiProProtocol(this);
-		wiProProtocol.setPrimaryTransports(config.getPrimaryTransports());
+		synchronized(PROTOCOL_REFERENCE_LOCK) {
+			wiProProtocol = new WiProProtocol(this);
+			wiProProtocol.setPrimaryTransports(config.getPrimaryTransports());
+		}
 
 		transportManager = new TransportManager(config,this);
 
 	}
-	private SdlSession(){
+	public SdlSession(){
 
 	}
 
@@ -163,8 +166,10 @@ public class SdlSession implements  IProtocolListener, TransportManager.Transpor
 			sdlSecurity.shutDown();
 		}
 		if(transportManager != null){
-			wiProProtocol.EndProtocolSession(SessionType.RPC, sessionId, sessionHashId);
-			transportManager.close(sessionId);
+			synchronized (PROTOCOL_REFERENCE_LOCK) {
+				wiProProtocol.EndProtocolSession(SessionType.RPC, sessionId, sessionHashId);
+				transportManager.close(sessionId);
+			}
 		}
 	}
 
@@ -219,6 +224,7 @@ public class SdlSession implements  IProtocolListener, TransportManager.Transpor
 	}
 
 	public IVideoStreamListener startVideoStream() {
+	    Log.d(TAG, "sdlSession.startVideoStream");
 		byte rpcSessionID = getSessionId();
 		VideoStreamingProtocol protocol = getAcceptedProtocol();
 		try {
@@ -246,6 +252,9 @@ public class SdlSession implements  IProtocolListener, TransportManager.Transpor
 	}
 
 	public IAudioStreamListener startAudioStream() {
+		if (mAudioPacketizer == null) {
+			return null;
+		}
 		byte rpcSessionID = getSessionId();
 		try {
 			StreamPacketizer packetizer = new StreamPacketizer(this, null, SessionType.PCM, rpcSessionID, this);
@@ -413,6 +422,7 @@ public class SdlSession implements  IProtocolListener, TransportManager.Transpor
 	}
 	
 	public void startService (SessionType serviceType, byte sessionID, boolean isEncrypted) {
+		Log.d(TAG, "sdlSession.startService");
 		if (transportManager == null){
 			return;
 		}
@@ -427,14 +437,18 @@ public class SdlSession implements  IProtocolListener, TransportManager.Transpor
 			}			
 			return;
 		}
-		wiProProtocol.StartProtocolService(serviceType, sessionID, isEncrypted);
+		synchronized (PROTOCOL_REFERENCE_LOCK) {
+			wiProProtocol.StartProtocolService(serviceType, sessionID, isEncrypted);
+		}
 	}
 	
 	public void endService (SessionType serviceType, byte sessionID) {
 		if (transportManager == null) {
 			return;
 		}
-		wiProProtocol.EndProtocolService(serviceType,sessionID);
+		synchronized (PROTOCOL_REFERENCE_LOCK) {
+			wiProProtocol.EndProtocolService(serviceType, sessionID);
+		}
 	}
 	
 	private void processControlService(ProtocolMessage msg) {
@@ -487,7 +501,9 @@ public class SdlSession implements  IProtocolListener, TransportManager.Transpor
 		if (wiProProtocol == null){
 			return;
 		}
-		wiProProtocol.SendMessage(msg);
+		synchronized (PROTOCOL_REFERENCE_LOCK) {
+			wiProProtocol.SendMessage(msg);
+		}
 	}
 	
 	public TransportType getCurrentTransportType() {
@@ -513,23 +529,26 @@ public class SdlSession implements  IProtocolListener, TransportManager.Transpor
 
 	@Override
 	public void onPacketReceived(SdlPacket packet) {
-		if(wiProProtocol != null){
-			wiProProtocol.handlePacketReceived(packet);
+		synchronized (PROTOCOL_REFERENCE_LOCK) {
+			if (wiProProtocol != null) {
+				wiProProtocol.handlePacketReceived(packet);
+			}
 		}
 	}
 
 	@Override
 	public void onTransportConnected(TransportType[] transportTypes) {
-		if(wiProProtocol != null){
-			Log.d(TAG, "onTransportConnected");
-			//In the future we should move this logic into the Protocol Layer
-			TransportType type = wiProProtocol.getTransportForSession(SessionType.RPC);
-			if(type == null){ //There is currently no transport registered to the
-				transportManager.requestNewSession(wiProProtocol.getPreferredPrimaryTransport(transportTypes));
+		synchronized (PROTOCOL_REFERENCE_LOCK) {
+			if (wiProProtocol != null) {
+				Log.d(TAG, "onTransportConnected: " + transportTypes.toString());
+				//In the future we should move this logic into the Protocol Layer
+				TransportType type = wiProProtocol.getTransportForSession(SessionType.RPC);
+				if (type == null) { //There is currently no transport registered to the
+					transportManager.requestNewSession(wiProProtocol.getPreferredPrimaryTransport(transportTypes));
+				}
+				wiProProtocol.onTransportsConnectedUpdate(transportTypes);
 			}
-			wiProProtocol.onTransportsConnectedUpdate(transportTypes);
 		}
-
 	}
 
 	@Override
@@ -582,8 +601,10 @@ public class SdlSession implements  IProtocolListener, TransportManager.Transpor
 		if(config.getPrimaryTransports().contains(TransportType.BLUETOOTH)
 				&& !config.requiresHighBandwidth()){
 			Log.d(TAG, "Entering legacy mode; creating new protocol instance");
-			wiProProtocol = new WiProProtocol(this);
-			wiProProtocol.setPrimaryTransports(((MultiplexTransportConfig)transportConfig).getPrimaryTransports());
+			synchronized (PROTOCOL_REFERENCE_LOCK) {
+				wiProProtocol = new WiProProtocol(this);
+				wiProProtocol.setPrimaryTransports(((MultiplexTransportConfig) transportConfig).getPrimaryTransports());
+			}
 			return true;
 		}else{
 			Log.d(TAG, "Bluetooth is not an acceptable transport; not moving to legacy mode");
@@ -613,7 +634,7 @@ public class SdlSession implements  IProtocolListener, TransportManager.Transpor
 
 	@Override
 	public void onProtocolMessageBytesToSend(SdlPacket packet) {
-		Log.d(TAG, "onProtocolMessageBytesToSend - " + packet.getTransportType());
+		//Log.d(TAG, "onProtocolMessageBytesToSend TransportType: " + packet.getTransportType());
 		if(transportManager != null){
 			transportManager.sendPacket(packet);
 		}
@@ -672,7 +693,9 @@ public class SdlSession implements  IProtocolListener, TransportManager.Transpor
     public void sendHeartbeat(IHeartbeatMonitor monitor) {
         Log.d(TAG, "Asked to send heartbeat");
         if (wiProProtocol != null)
-			wiProProtocol.SendHeartBeat(sessionId);
+			synchronized (PROTOCOL_REFERENCE_LOCK) {
+				wiProProtocol.SendHeartBeat(sessionId);
+			}
     }
 
     @Override
@@ -756,7 +779,9 @@ public class SdlSession implements  IProtocolListener, TransportManager.Transpor
 				service = iter.next();
 				
 				if (service != null)
-					wiProProtocol.StartProtocolService(service, getSessionId(), true);
+					synchronized (PROTOCOL_REFERENCE_LOCK) {
+						wiProProtocol.StartProtocolService(service, getSessionId(), true);
+					}
 				
 				iter.remove();				
 			}
@@ -823,7 +848,7 @@ public class SdlSession implements  IProtocolListener, TransportManager.Transpor
 		return acceptedVideoParams;
 	}
 
-	private VideoStreamingProtocol getAcceptedProtocol() {
+	public VideoStreamingProtocol getAcceptedProtocol() {
 		// acquire default protocol (RAW)
 		VideoStreamingProtocol protocol = new VideoStreamingParameters().getFormat().getProtocol();
 
