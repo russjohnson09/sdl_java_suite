@@ -505,7 +505,7 @@ public class TransportBroker {
 				message.replyTo = this.clientMessenger;
 				Bundle bundle = new Bundle();
 				if(routerServiceVersion< TransportConstants.RouterServiceVersions.APPID_STRING){
-					bundle.putLong(TransportConstants.APP_ID_EXTRA,coWiProWinvertAppId(appId));
+					bundle.putLong(TransportConstants.APP_ID_EXTRA,convertAppId(appId));
 				}
 				bundle.putString(TransportConstants.APP_ID_EXTRA_STRING, appId);
 				bundle.putByteArray(TransportConstants.BYTES_TO_SEND_EXTRA_NAME, bytes); //Do we just change this to the args and objs
