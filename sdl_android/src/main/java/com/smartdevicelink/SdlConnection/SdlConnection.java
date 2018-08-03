@@ -2,6 +2,7 @@ package com.smartdevicelink.SdlConnection;
 
 
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import android.content.ComponentName;
@@ -280,7 +281,11 @@ public class SdlConnection implements IProtocolListener, ITransportListener {
 	public void onProtocolError(String info, Exception e) {
 		_connectionListener.onProtocolError(info, e);
 	}
-	
+
+	@Override
+	public void connectSecondaryTransport(byte sessionID, TransportType transportType, Map<String, Object> params) {
+	}
+
 	/**
 	 * Gets type of transport currently used by this connection.
 	 * 
@@ -471,7 +476,7 @@ public class SdlConnection implements IProtocolListener, ITransportListener {
 			if (session != null) {
 				session.onProtocolServiceDataACK(serviceType, dataSize, sessionID);
 			}
-		}			
+		}
 	}
 		
 	public int getRegisterCount() {

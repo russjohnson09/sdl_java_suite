@@ -63,6 +63,8 @@ public class TransportConstants {
 
 	public static final String AOA_OPEN_ACCESSORY								= "sdl.router.openaccessory";
 
+	public static final String XMA_PROVIDER_ACTION                              = "sdl.router.xmaprovider";
+
 
 
 	/**
@@ -179,9 +181,12 @@ public class TransportConstants {
      * Command to have router service to send a packet
      */
 	public static final int ROUTER_SEND_PACKET 											= 0x20;
-	
 
-	
+	/**
+	 * Command to tell router service details of secondary transport
+	 */
+	public static final int ROUTER_SEND_SECONDARY_TRANSPORT_DETAILS                     = 0x21;
+
 	//response
 	/**
 	 * Router has received a packet and sent it to the client
@@ -236,8 +241,51 @@ public class TransportConstants {
 	public static final int ROUTER_USB_ACC_RECEIVED							= 0x56;
 
 
+	/**
+	 * Multiple-transports related constants
+	 *
+	 */
+	public static final String IAP_BLUETOOTH                                = "IAP_BLUETOOTH";
+	public static final String IAP_USB                                      = "IAP_USB";
+	public static final String IAP_USB_HOST_MODE                            = "TCP_WIFI";
+	public static final String IAP_CARPLAY                                  = "IAP_CARPLAY";
+	public static final String SPP_BLUETOOTH                                = "SPP_BLUETOOTH";
+	public static final String AOA_USB                                      = "AOA_USB";
+	public static final String TCP_WIFI                                     = "TCP_WIFI";
 
+    /**
+     * XMA Provider Messenger WHATS
+     */
+    public static final int XMA_NETCONN_NEW                                 = 0x60;
+    public static final int XMA_NETCONN_BIND                                = 0x61;
+    public static final int XMA_NETCONN_CLIENTCLOSE                         = 0x62;
+    public static final int XMA_NETCONN_ACCEPT                              = 0x63;
+    public static final int XMA_NETCONN_SERVERCLOSE                         = 0x64;
+    public static final int XMA_NETCONN_CONNECT                             = 0x65;
+    public static final int XMA_NETCONN_SEND                                = 0x66;
+    public static final int XMA_NETCONN_RECEIVE                             = 0x67;
+    public static final int XMA_NETCONN_GETLOCALPORT                        = 0x68;
+    public static final int XMA_NETCONN_RECEIVERCLOSE						= 0x69;
+    public static final int XMA_NETCONN_GETLOCALSOCKETADDRESS               = 0x6a;
+	public static final int XMA_NETCONN_GETREMOTESOCKETADDRESS              = 0x6b;
 
-	
+    public static final int XMA_NETCONN_NEW_RESPONSE                        = 0x70;
+    public static final int XMA_NETCONN_BIND_RESPONSE                       = 0x71;
+    //public static final int XMA_NETCONN_CLIENTCLOSE_RESPONSE                = 0x72;
+    public static final int XMA_NETCONN_ACCEPT_RESPONSE                     = 0x73;
+    //public static final int XMA_NETCONN_SERVERCLOSE_RESPONSE                = 0x74;
+    public static final int XMA_NETCONN_CONNECT_RESPONSE                    = 0x75;
+    //public static final int XMA_NETCONN_SEND_RESPONSE                       = 0x76;
+    public static final int XMA_NETCONN_RECEIVE_RESPONSE                    = 0x77;
+    public static final int XMA_NETCONN_GETLOCALPORT_RESPONSE               = 0x78;
+    public static final int XMA_NETCONN_GETLOCALSOCKETADDRESS_RESPONSE      = 0x7a;
+	public static final int XMA_NETCONN_GETREMOTESOCKETADDRESS_RESPONSE     = 0x7b;
+
+	public static final String XMA_PROTOCOL_KEY = "protocol";
+	public static final String XMA_HOST_KEY = "host";
+	public static final String XMA_PORT_KEY = "port";
+	public static final String XMA_DATAGRAM_DATA_KEY = "datagram.data";
+	public static final String XMA_DATAGRAM_OFFSET_KEY = "datagram.offset";
+	public static final String XMA_DATAGRAM_LENGTH_KEY = "datagram.length";
 
 }

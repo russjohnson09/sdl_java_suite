@@ -16,7 +16,9 @@ import junit.framework.Assert;
 
 import java.io.ByteArrayOutputStream;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * This is a unit test class for the SmartDeviceLink library project class : 
@@ -55,6 +57,11 @@ public class WiProProtocolTests extends AndroidTestCase {
 		public void onResetIncomingHeartbeat(SessionType sessionType,byte sessionID) {}
 		@Override
 		public void onProtocolError(String info, Exception e) {}
+
+		@Override
+		public void onTransportEventUpdate(byte sessionID, Map<String, Object> params) {
+
+		}
 	};
 	public static class DidReceiveListener implements IProtocolListener{
 		boolean didReceive = false;
@@ -94,6 +101,8 @@ public class WiProProtocolTests extends AndroidTestCase {
 		public void onResetIncomingHeartbeat(SessionType sessionType,byte sessionID) {}
 		@Override
 		public void onProtocolError(String info, Exception e) {}
+		@Override
+		public void onTransportEventUpdate(byte sessionID, Map<String, Object> params) {}
 	};
 	DidReceiveListener onProtocolMessageReceivedListener = new DidReceiveListener();
 	

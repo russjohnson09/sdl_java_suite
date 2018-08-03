@@ -18,6 +18,7 @@ import com.smartdevicelink.transport.enums.TransportType;
 
 import java.lang.ref.WeakReference;
 import java.util.HashMap;
+import java.util.Map;
 
 public class TransportManager {
     private static final String TAG = "TransportManager";
@@ -141,6 +142,10 @@ public class TransportManager {
         }else if(legacyBluetoothTransport != null && !TransportType.BLUETOOTH.equals(transportType)){
             Log.w(TAG, "Session requested for non-bluetooth transport while in legacy mode");
         }
+    }
+
+    public void sendSecondaryTransportDetails(byte sessionId, Map<String, Object> params){
+    	transport.sendSecondaryTransportDetails(sessionId, params);
     }
 
     private class TransportBrokerImpl extends TransportBroker{

@@ -39,6 +39,9 @@ import static com.smartdevicelink.transport.TransportConstants.SEND_PACKET_TO_AP
 
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Array;
+import java.net.DatagramPacket;
+import java.net.InetSocketAddress;
+import java.net.SocketAddress;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -102,6 +105,7 @@ import com.smartdevicelink.protocol.BinaryFrameHeader;
 import com.smartdevicelink.protocol.ProtocolMessage;
 import com.smartdevicelink.protocol.SdlPacket;
 import com.smartdevicelink.protocol.SdlPacketFactory;
+import com.smartdevicelink.protocol.enums.ControlFrameTags;
 import com.smartdevicelink.protocol.enums.FrameType;
 import com.smartdevicelink.protocol.enums.FunctionID;
 import com.smartdevicelink.protocol.enums.MessageType;
@@ -115,6 +119,9 @@ import com.smartdevicelink.util.BitConverter;
 import com.smartdevicelink.util.DebugTool;
 import com.smartdevicelink.util.SdlAppInfo;
 import com.smartdevicelink.xevo.slip.UsbSlipDriver;
+import com.smartdevicelink.xevo.transport.NetconnSocket;
+import com.smartdevicelink.xevo.transport.XmaSocket;
+import com.smartdevicelink.xevo.transport.XmaTransportManager;
 
 import static com.smartdevicelink.transport.TransportConstants.FOREGROUND_EXTRA;
 import static com.smartdevicelink.transport.TransportConstants.SDL_NOTIFICATION_CHANNEL_ID;
@@ -173,6 +180,10 @@ public class SdlRouterService extends Service{
     private XevoMultiplexSlipTransport slipTransport;
     private final Handler slipHandler = new TransportHandler(this);
 
+	/* TCP Transport */
+	private MultiplexTcpTransport tcpTransport;
+	private final Handler tcpHandler = new TransportHandler(this);
+
 	private static boolean connectAsClient = false;
 	private static boolean closing = false;
 	private boolean isTransportConnected = false;
@@ -186,7 +197,7 @@ public class SdlRouterService extends Service{
 	private boolean initPassed = false;
 
 	public static HashMap<String,RegisteredApp> registeredApps;
-	private SparseArray<String> bluetoothSessionMap, usbSessionMap, slipSessionMap;
+	private SparseArray<String> bluetoothSessionMap, usbSessionMap, slipSessionMap, tcpSessionMap;
 	private SparseIntArray sessionHashIdMap;
 	private SparseIntArray cleanedSessionMap;
 	private final Object SESSION_LOCK = new Object(), REGISTERED_APPS_LOCK = new Object(), PING_COUNT_LOCK = new Object();
@@ -461,7 +472,7 @@ public class SdlRouterService extends Service{
 	                	
 	                    break;
 	                case TransportConstants.ROUTER_SEND_PACKET:
-	                	Log.d(TAG, "Received packet to send");
+	                	//Log.d(TAG, "Received packet to send");
 	                	if(receivedBundle!=null){
 	                		Runnable packetRun = new Runnable(){
 	                			@Override
@@ -483,11 +494,13 @@ public class SdlRouterService extends Service{
 											transportType = TransportType.BLUETOOTH;
 										} else if(service.usbTransport!= null && service.usbTransport.isConnected()){
 											transportType = TransportType.USB;
-                                        }
+										} else if(service.tcpTransport != null && service.tcpTransport.isConnected()){
+											transportType = TransportType.TCP;
+										}
 										Log.d(TAG, "Transport type was null, so router set it to " + transportType.name());
 										receivedBundle.putString(TransportConstants.TRANSPORT_FOR_PACKET, transportType.name());
 									}else{
-										Log.d(TAG, "Transport type of packet to send: " + transportType.name());
+										//Log.d(TAG, "Transport type of packet to send: " + transportType.name());
 									}
 									RegisteredApp buffApp;
 									synchronized(service.REGISTERED_APPS_LOCK){
@@ -495,10 +508,10 @@ public class SdlRouterService extends Service{
                                     }
 
 									if(buffApp !=null){
-										Log.d(TAG, "handling incomming client message");
+										//Log.d(TAG, "handling incomming client message");
                                         buffApp.handleIncommingClientMessage(receivedBundle);
                                     }else{
-										Log.d(TAG, "Write bytes to transport");
+										//Log.d(TAG, "Write bytes to transport");
                                         service.writeBytesToTransport(receivedBundle);
                                     }
 								}
@@ -544,16 +557,17 @@ public class SdlRouterService extends Service{
 											} else if (service.slipTransport != null && service.slipTransport.isConnected()) {
 											    requestingTransport = TransportType.USB;
                                             }
+										}else if(service.tcpTransport != null && service.tcpTransport.isConnected()){
+												requestingTransport = TransportType.TCP;
 										}
-										appRequesting.getSessionIds().add((long)-1); //Adding an extra session
-										Log.w(TAG, "Requesting transport adding to app: " + requestingTransport.name());
-										appRequesting.getAwaitingSession().add(requestingTransport);
-										extraSessionResponse.arg1 = TransportConstants.ROUTER_REQUEST_NEW_SESSION_RESPONSE_SUCESS;
-									}else{
+								    	appRequesting.getSessionIds().add((long)-1); //Adding an extra session
+									    appRequesting.getAwaitingSession().add(requestingTransport);
+									    extraSessionResponse.arg1 = TransportConstants.ROUTER_REQUEST_NEW_SESSION_RESPONSE_SUCESS;
+								    }else{
 										extraSessionResponse.arg1 = TransportConstants.ROUTER_REQUEST_NEW_SESSION_RESPONSE_FAILED_APP_NOT_FOUND;
-									}
-								}
-							}		
+								    }
+							    }
+							}
 						}else{
 							extraSessionResponse.arg1 = TransportConstants.ROUTER_REQUEST_NEW_SESSION_RESPONSE_FAILED_APP_ID_NOT_INCL;
 						}
@@ -605,6 +619,22 @@ public class SdlRouterService extends Service{
 	                	}catch(NullPointerException e2){
 	                		Log.e(TAG, "No reply address included, can't send a reply");
 	                	}
+	                	break;
+	                case TransportConstants.ROUTER_SEND_SECONDARY_TRANSPORT_DETAILS:
+	                	// Currently this only handles one TCP connection
+		                String ipAddr = receivedBundle.getString(ControlFrameTags.RPC.TransportEventUpdate.TCP_IP_ADDRESS);
+		                int port = receivedBundle.getInt(ControlFrameTags.RPC.TransportEventUpdate.TCP_PORT);
+		                if(ipAddr == null){ // double check if null or empty
+		                	// Handle TCP disconnection
+			                if(service.tcpTransport != null){
+			                	service.tcpTransport.stop(MultiplexBaseTransport.STATE_NONE);
+			                	service.tcpTransport = null;
+			                }
+		                }else{
+			                service.tcpTransport = new MultiplexTcpTransport(port, ipAddr, true, service.tcpHandler);
+			                Log.i(TAG, "Starting TCP transport");
+			                service.tcpTransport.start();
+		                }
 	                	break;
 	                default:
 	                    super.handleMessage(msg);
@@ -802,12 +832,305 @@ public class SdlRouterService extends Service{
 	        			AndroidTools.sendExplicitBroadcast(service.getApplicationContext(),service.pingIntent, null);
 	        		}
 	        		break;
+			        case TransportConstants.ALT_TRANSPORT_CONNECTED:
+			        	break;
 	        	default:
 	        		Log.w(TAG, "Unsupported request: " + msg.what);
 	        		break;
 	        	}
 	        }
 	    }
+
+	    final Messenger xmaProviderMessenger = new Messenger(new XmaProviderHandler(this));
+
+	    class XmaProviderHandler extends Handler implements XmaSocket.XmaSocketListener {
+	        final WeakReference<SdlRouterService> _service;
+	        private XmaTransportManager xmaTransportManager;
+	        private Messenger _receiver;
+	        private Messenger _acceptor;
+
+	        public XmaProviderHandler(SdlRouterService service) {
+	            _service = new WeakReference<>(service);
+	            xmaTransportManager = new XmaTransportManager();
+            }
+
+            @Override
+			public void onAccept(XmaSocket socket) {
+	        	Log.d(TAG, "xmaProvider: onAccept got called");
+	        	if (xmaTransportManager == null) {
+	        		return;
+				}
+	        	Integer hash = xmaTransportManager.addSocket(socket);
+	        	if (_acceptor != null) {
+					Message sendMessage = Message.obtain();
+					sendMessage.what = TransportConstants.XMA_NETCONN_ACCEPT_RESPONSE;
+					sendMessage.arg1 = hash;
+					try {
+						_acceptor.send(sendMessage);
+						Log.d(TAG, "xmaProvider: sent ACCEPT_RESPONSE");
+					} catch(RemoteException e) {
+						e.printStackTrace();
+					}
+				}
+			}
+
+			@Override
+			public void onReceive(DatagramPacket packet) {
+				if (_receiver != null) {
+					Message sendMessage = Message.obtain();
+					sendMessage.what = TransportConstants.XMA_NETCONN_RECEIVE_RESPONSE;
+					Bundle bundle = new Bundle();
+					bundle.putInt(TransportConstants.XMA_DATAGRAM_OFFSET_KEY, packet.getOffset());
+					bundle.putInt(TransportConstants.XMA_DATAGRAM_LENGTH_KEY, packet.getLength());
+					bundle.putByteArray(TransportConstants.XMA_DATAGRAM_DATA_KEY, packet.getData());
+					sendMessage.setData(bundle);
+					try {
+						_receiver.send(sendMessage);
+					} catch(RemoteException e) {
+						e.printStackTrace();
+					}
+				}
+			}
+
+            @Override
+            public void handleMessage(Message msg) {
+	        	if (this._service == null) {
+	        		return;
+				}
+				SdlRouterService service = this._service.get();
+	        	switch(msg.what) {
+					/**
+					 * New socket request
+					 * obj: protocol (string value = "TCP" or "UDP")
+					 */
+					case TransportConstants.XMA_NETCONN_NEW: {
+						Bundle bundle = msg.getData();
+						String protoStr = bundle.getString(TransportConstants.XMA_PROTOCOL_KEY);
+						int hash = xmaTransportManager.newSocket(NetconnSocket.Protocol.valueOf(protoStr)).intValue();
+						Message replyMessage = Message.obtain();
+						replyMessage.what = TransportConstants.XMA_NETCONN_NEW_RESPONSE;
+						replyMessage.arg1 = hash;
+						try {
+							msg.replyTo.send(replyMessage);
+						} catch (RemoteException e) {
+							e.printStackTrace();
+						}
+					}
+					break;
+
+					/**
+					 * bind request
+					 * obj: InetSocketAddress
+					 * arg1: Socket's hashCode
+ 					 */
+					case TransportConstants.XMA_NETCONN_BIND: {
+						Integer hash = new Integer(msg.arg1);
+						Bundle bundle = msg.getData();
+						String host = bundle.getString(TransportConstants.XMA_HOST_KEY);
+						int port = bundle.getInt(TransportConstants.XMA_PORT_KEY);
+						InetSocketAddress addr = new InetSocketAddress(host, port);
+						XmaSocket socket = xmaTransportManager.getSocket(hash);
+						int retCode = -1;
+						if (socket != null) {
+							socket.bind(addr);
+							retCode = 0;
+						}
+						// mo response
+						/*--
+						Message replyMessage = Message.obtain();
+						replyMessage.what = TransportConstants.XMA_NETCONN_BIND_RESPONSE;
+						replyMessage.arg1 = retCode;
+						try {
+							msg.replyTo.send(replyMessage);
+						} catch(RemoteException e) {
+							e.printStackTrace();
+						} --*/
+					}
+					break;
+
+					/**
+					 * close client socket
+					 * arg1: Socket's hash code
+					 */
+					case TransportConstants.XMA_NETCONN_CLIENTCLOSE: {
+						Integer hash = new Integer(msg.arg1);
+						XmaSocket socket = xmaTransportManager.getSocket(hash);
+						int retCode = -1;
+						if (socket != null) {
+							socket.close();
+							retCode = 0;
+						}
+						// no reply
+					}
+					break;
+
+					/**
+					 * start acceptor task
+					 * arg1: hash code of socket
+					 */
+					case TransportConstants.XMA_NETCONN_ACCEPT: {
+						Integer hash = new Integer(msg.arg1);
+						_acceptor = msg.replyTo;
+						XmaSocket socket = xmaTransportManager.getSocket(hash);
+						if (socket != null) {
+							Log.d(TAG, "xmaProvider: got Accept request with valid socket");
+							Bundle bundle = msg.getData();
+							String host = bundle.getString(TransportConstants.XMA_HOST_KEY);
+							int port = bundle.getInt(TransportConstants.XMA_PORT_KEY);
+							InetSocketAddress addr = new InetSocketAddress(host, port);
+							socket.setListener(this);
+							socket.startAcceptorTask(addr);
+						} else {
+							Log.e(TAG, "xmaProvider: got Accept request but socket Id is invalid");
+						}
+						// this won't reply.
+					}
+					break;
+
+					/**
+					 * stop acceptor task
+					 */
+					case TransportConstants.XMA_NETCONN_SERVERCLOSE: {
+						Integer hash = new Integer(msg.arg1);
+						XmaSocket socket = xmaTransportManager.getSocket(hash);
+						if (socket != null) {
+							socket.stopAcceptorTask();
+						}
+						//this won't reply
+					}
+					break;
+
+					/**
+					 * connect request
+					 * obj: InetSocketAddress
+					 * arg1: Socket's hash code
+					 */
+					case TransportConstants.XMA_NETCONN_CONNECT: {
+						Integer hash = new Integer(msg.arg1);
+						Log.d(TAG, "xmaProvider: XMA_NETCONN_CONNECT hash=" + hash);
+						Bundle bundle = msg.getData();
+						String host = bundle.getString(TransportConstants.XMA_HOST_KEY);
+						int port = bundle.getInt(TransportConstants.XMA_PORT_KEY);
+						InetSocketAddress addr = new InetSocketAddress(host, port);
+						XmaSocket socket = xmaTransportManager.getSocket(hash);
+						int retCode = -1;
+						if (socket != null) {
+							socket.connect(addr);
+							retCode = 0;
+						} else {
+							Log.d(TAG, "xmaProvider: XMA_NETCONN_CONNECT failed; no socket");
+						}
+					}
+					break;
+
+					/**
+					 * send request
+					 * obj: DatagramPacket
+					 *
+					 */
+					case TransportConstants.XMA_NETCONN_SEND: {
+						Integer hash = new Integer(msg.arg1);
+						Bundle bundle = msg.getData();
+						int offset = bundle.getInt(TransportConstants.XMA_DATAGRAM_OFFSET_KEY);
+						int length = bundle.getInt(TransportConstants.XMA_DATAGRAM_LENGTH_KEY);
+						byte[] data = bundle.getByteArray(TransportConstants.XMA_DATAGRAM_DATA_KEY);
+						if (data != null) {
+							DatagramPacket packet = new DatagramPacket(data, offset, length);
+							XmaSocket socket = xmaTransportManager.getSocket(hash);
+							if (socket != null) {
+								socket.send(packet);
+							}
+						} else {
+							Log.d(TAG, "got XMA_NETCONN_SEND but data is null");
+						}
+						// no reply message.
+					}
+					break;
+
+					case TransportConstants.XMA_NETCONN_RECEIVE: {
+						Integer hash = new Integer(msg.arg1);
+						XmaSocket socket = xmaTransportManager.getSocket(hash);
+						_receiver = msg.replyTo;
+						socket.setListener(this);
+						socket.startReaderTask();
+					}
+						// no reply
+					break;
+
+					case TransportConstants.XMA_NETCONN_GETLOCALPORT: {
+						Integer hash = new Integer(msg.arg1);
+						XmaSocket socket = xmaTransportManager.getSocket(hash);
+						int localPort = 0;
+						if (socket != null) {
+							localPort = socket.getLocalPort();
+						}
+						Message replyMessage = Message.obtain();
+						replyMessage.what = TransportConstants.XMA_NETCONN_GETLOCALPORT_RESPONSE;
+						replyMessage.arg1 = localPort;
+						try {
+							msg.replyTo.send(replyMessage);
+						} catch (RemoteException e) {
+							e.printStackTrace();
+						}
+					}
+					break;
+
+					case TransportConstants.XMA_NETCONN_RECEIVERCLOSE: {
+						Integer hash = new Integer(msg.arg1);
+						XmaSocket socket = xmaTransportManager.getSocket(hash);
+						if (socket != null) {
+							socket.stopReaderTask();
+						}
+						_receiver = null;
+						// this won't reply
+					}
+					break;
+
+                    case TransportConstants.XMA_NETCONN_GETLOCALSOCKETADDRESS: {
+                        Integer hash = new Integer(msg.arg1);
+                        XmaSocket socket = xmaTransportManager.getSocket(hash);
+                        InetSocketAddress socketAddress = null;
+                        if (socket != null) {
+                            socketAddress = (InetSocketAddress)socket.getLocalSocketAddress();
+                        }
+                        Message replyMessage = Message.obtain();
+                        replyMessage.what = TransportConstants.XMA_NETCONN_GETLOCALSOCKETADDRESS_RESPONSE;
+                        Bundle bundle = new Bundle();
+                        bundle.putString(TransportConstants.XMA_HOST_KEY, socketAddress.getHostString());
+                        bundle.putInt(TransportConstants.XMA_PORT_KEY, socketAddress.getPort());
+                        replyMessage.setData(bundle);
+                        try {
+                            msg.replyTo.send(replyMessage);
+                        } catch (RemoteException e) {
+                            e.printStackTrace();
+                        }
+                    }
+                    break;
+
+                    case TransportConstants.XMA_NETCONN_GETREMOTESOCKETADDRESS: {
+                        Integer hash = new Integer(msg.arg1);
+                        XmaSocket socket = xmaTransportManager.getSocket(hash);
+                        InetSocketAddress socketAddress = null;
+                        if (socket != null) {
+                            socketAddress = (InetSocketAddress)socket.getRemoteSocketAddress();
+                        }
+                        Message replyMessage = Message.obtain();
+                        replyMessage.what = TransportConstants.XMA_NETCONN_GETREMOTESOCKETADDRESS_RESPONSE;
+						Bundle bundle = new Bundle();
+						bundle.putString(TransportConstants.XMA_HOST_KEY, socketAddress.getHostString());
+						bundle.putInt(TransportConstants.XMA_PORT_KEY, socketAddress.getPort());
+						replyMessage.setData(bundle);
+                        try {
+                            msg.replyTo.send(replyMessage);
+                        } catch (RemoteException e) {
+                            e.printStackTrace();
+                        }
+                    }
+                    break;
+				}
+
+            }
+        }
 
 /* **************************************************************************************************************************************
 ***********************************************  Life Cycle **************************************************************
@@ -830,9 +1153,12 @@ public class SdlRouterService extends Service{
 				return this.routerMessenger.getBinder();
 			}else if(TransportConstants.BIND_REQUEST_TYPE_STATUS.equals(requestType)){
 				return this.routerStatusMessenger.getBinder();
-			}else if(TransportConstants.BIND_REQUEST_TYPE_USB_PROVIDER.equals(requestType)){
-				Log.d(TAG, "Received bind request for USB; disregard for SLIP router");
-			    //return this.usbTransferMessenger.getBinder();
+			}else if(TransportConstants.BIND_REQUEST_TYPE_USB_PROVIDER.equals(requestType)) {
+                Log.d(TAG, "Received bind request for USB; disregard for SLIP router");
+                //return this.usbTransferMessenger.getBinder();
+            } else if (TransportConstants.XMA_PROVIDER_ACTION.equals(requestType)) {
+			    Log.d(TAG, "Got XMA Provider request");
+			    return xmaProviderMessenger.getBinder();
 			}else{
 				Log.w(TAG, "Unknown bind request type");
 			}
@@ -1143,7 +1469,9 @@ public class SdlRouterService extends Service{
 				}
 			}
 		}
-		packetWriteTaskMasterMap.clear();
+		if(packetWriteTaskMasterMap != null){
+			packetWriteTaskMasterMap.clear();
+		}
 		packetWriteTaskMasterMap = null;
 
 		UsbSlipDriver.getInstance().stop();
@@ -1327,9 +1655,8 @@ public class SdlRouterService extends Service{
 	private boolean isTransportConnected(TransportType transportType){
 		if(bluetoothTransport != null && transportType.equals(TransportType.BLUETOOTH)){
 			return bluetoothTransport.isConnected();
-		}else if(transportType.equals(TransportType.TCP)){
-			return false;
-			// TODO: return whether TCP transport in RouterService is connected
+		}else if(tcpTransport != null && transportType.equals(TransportType.TCP)){
+			return tcpTransport.isConnected();
 		}else if(usbTransport != null && transportType.equals(TransportType.USB)){
 			return usbTransport.isConnected();
 		} else if (slipTransport != null && transportType.equals(TransportType.USB)) {
@@ -1460,17 +1787,19 @@ public class SdlRouterService extends Service{
 	}
 	
 	private Message createHardwareConnectedMessage(final TransportType type){
-			Message message = Message.obtain();
-			message.what = TransportConstants.HARDWARE_CONNECTION_EVENT;
-			Bundle bundle = new Bundle();
-			bundle.putString(TransportConstants.HARDWARE_CONNECTED, type.name());
-			bundle.putStringArrayList(TransportConstants.CURRENT_HARDWARE_CONNECTED, getConnectedTransports());
-    		if(MultiplexBluetoothTransport.currentlyConnectedDevice!=null){
-    			bundle.putString(CONNECTED_DEVICE_STRING_EXTRA_NAME, MultiplexBluetoothTransport.currentlyConnectedDevice);
-    		}
-			message.setData(bundle);
-			return message;
-		
+	    Log.d(TAG, "createHardwareConnectedMessage: " + type);
+        Message message = Message.obtain();
+        message.what = TransportConstants.HARDWARE_CONNECTION_EVENT;
+        Bundle bundle = new Bundle();
+        bundle.putString(TransportConstants.HARDWARE_CONNECTED, type.name());
+        ArrayList transports = getConnectedTransports();
+        transports.add(0, type.name());
+        bundle.putStringArrayList(TransportConstants.CURRENT_HARDWARE_CONNECTED, transports);
+        if(MultiplexBluetoothTransport.currentlyConnectedDevice!=null){
+            bundle.putString(CONNECTED_DEVICE_STRING_EXTRA_NAME, MultiplexBluetoothTransport.currentlyConnectedDevice);
+        }
+        message.setData(bundle);
+        return message;
 	}
 	
 	public void onTransportDisconnected(TransportType type){
@@ -1660,6 +1989,10 @@ public class SdlRouterService extends Service{
                     }
 					return true;
 				case TCP:
+					if(tcpTransport != null && tcpTransport.getState() ==  MultiplexBaseTransport.STATE_CONNECTED) {
+						tcpTransport.write(packet, offset, count);
+						return true;
+					}
 					default:
 						if(sendThroughAltTransport(bundle)){
 							return true;
@@ -1746,7 +2079,11 @@ public class SdlRouterService extends Service{
 				if(packet.getFrameType() == FrameType.Control){
 					isNewSessionRequest = (packet.getFrameInfo() == SdlPacket.FRAME_INFO_START_SERVICE_ACK || packet.getFrameInfo() == SdlPacket.FRAME_INFO_START_SERVICE_NAK)
 							&& packet.getServiceType() == SdlPacket.SERVICE_TYPE_RPC;
-					isNewTransportRequest = false; //TODO (packet.getFrameInfo() == SdlPacket.FRAME_INFO_REGISTER_TRANSPORT_ACK || packet.getFrameInfo() == SdlPacket.FRAME_INFO_REGISTER_TRANSPORT_NAK) && packet.getServiceType() != SdlPacket.SERVICE_TYPE_RPC
+					isNewTransportRequest = (packet.getFrameInfo() == SdlPacket.FRAME_INFO_REGISTER_SECONDARY_TRANSPORT_ACK
+							|| packet.getFrameInfo() == SdlPacket.FRAME_INFO_REGISTER_SECONDARY_TRANSPORT_NAK); // && packet.getServiceType() != SdlPacket.SERVICE_TYPE_RPC;
+					if(isNewTransportRequest){
+						Log.d(TAG, "New transport request!");
+					}
 				}
 
 	    		String appid = getAppIDForSession(session, isNewSessionRequest, isNewTransportRequest, packet.getTransportType()); //Find where this packet should go
@@ -2067,8 +2404,12 @@ public class SdlRouterService extends Service{
 						usbSessionMap.remove(sessionId);
 						retVal = true;
 					}
+				} else if (transportTypes.contains(TransportType.TCP) && tcpSessionMap != null) {
+					if (tcpSessionMap.indexOfKey(sessionId) >= 0) {
+						tcpSessionMap.remove(sessionId);
+						retVal = true;
+					}
 				}
-				//TODO TCP
 			}
 			return retVal;
 		}
@@ -2154,6 +2495,12 @@ public class SdlRouterService extends Service{
 					sessionMap = slipSessionMap;
 					break;
 				case TCP:
+					if(tcpSessionMap == null){
+						Log.w(TAG, "TCP map was null during look up. Creating one on the fly");
+						tcpSessionMap = new SparseArray<String>();
+					}
+					sessionMap = tcpSessionMap;
+					break;
 				default:
 					return null;
 			}
@@ -2204,6 +2551,11 @@ public class SdlRouterService extends Service{
 							break;
 						case TCP:
 							//TODO TCP as secondary
+							appId =  bluetoothSessionMap.get(sessionId);
+							if(appId == null){
+								//TODO try USB
+								appId =  usbSessionMap.get(sessionId);
+							}
 							break;
 						default:
 							return null;
@@ -2926,7 +3278,7 @@ public class SdlRouterService extends Service{
 			bytesToWrite = bundle.getByteArray(TransportConstants.BYTES_TO_SEND_EXTRA_NAME); 
 			offset = bundle.getInt(TransportConstants.BYTES_TO_SEND_EXTRA_OFFSET, 0); //If nothing, start at the beginning of the array
 			size = bundle.getInt(TransportConstants.BYTES_TO_SEND_EXTRA_COUNT, bytesToWrite.length);  //In case there isn't anything just send the whole packet.
-			this.priorityCoefficient = bundle.getInt(TransportConstants.PACKET_PRIORITY_COEFFICIENT,0); Log.d(TAG, "packet priority coef: "+ this.priorityCoefficient);
+			this.priorityCoefficient = bundle.getInt(TransportConstants.PACKET_PRIORITY_COEFFICIENT,0); // Log.d(TAG, "packet priority coef: "+ this.priorityCoefficient);
 			this.transportType = TransportType.valueForString(receivedBundle.getString(TransportConstants.TRANSPORT_FOR_PACKET));
 		}
 
