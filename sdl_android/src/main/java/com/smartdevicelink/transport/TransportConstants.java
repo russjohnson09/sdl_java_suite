@@ -62,6 +62,7 @@ public class TransportConstants {
 	public static final String SDL_NOTIFICATION_CHANNEL_NAME 					= "SmartDeviceLink";
 
 	public static final String AOA_OPEN_ACCESSORY								= "sdl.router.openaccessory";
+	public static final String TRANSPORT_DISCONNECT                             = "sdl.router.transport.disconnect";
 
 	public static final String XMA_PROVIDER_ACTION                              = "sdl.router.xmaprovider";
 

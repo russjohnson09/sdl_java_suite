@@ -34,4 +34,11 @@ public class XmaTransportManager {
             mSocketMap.remove(hash);
         }
     }
+
+    public void releaseAll() {
+        for (XmaSocket socket: mSocketMap.values()) {
+            socket.close();
+        }
+        mSocketMap.clear();
+    }
 }

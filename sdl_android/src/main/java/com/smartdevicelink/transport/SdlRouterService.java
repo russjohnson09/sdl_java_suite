@@ -1129,9 +1129,16 @@ public class SdlRouterService extends Service{
                     break;
 				}
 
+
             }
         }
 
+		private void notifyUsbDisconnect() {
+			Log.d(TAG, "about broadcasting TRANSPORT_DISCONNECT");
+			Intent broadcastintent = new Intent(TransportConstants.TRANSPORT_DISCONNECT);
+			broadcastintent.putExtra("Media", "USB");
+			this.sendBroadcast(broadcastintent);
+		}
 /* **************************************************************************************************************************************
 ***********************************************  Life Cycle **************************************************************
 ****************************************************************************************************************************************/
@@ -1309,6 +1316,16 @@ public class SdlRouterService extends Service{
 
 		// Initialize UsbSlipDriver
 		UsbSlipDriver.init(this);
+		UsbSlipDriver.getInstance().setConnectionListener(new UsbSlipDriver.ConnectionListener() {
+			@Override
+			public void onDetached() {
+				SdlRouterService.this.notifyUsbDisconnect();
+			}
+
+			@Override
+			public void onDisconnected() {
+			}
+		});
 		UsbSlipDriver.getInstance().start();
 
 		if (slipTransport == null) {
@@ -1803,6 +1820,7 @@ public class SdlRouterService extends Service{
 	}
 	
 	public void onTransportDisconnected(TransportType type){
+		Log.d(TAG, "onTransportDisconnected: " + type.name());
 		cachedModuleVersion = -1; //Reset our cached version
 		if(registeredApps != null && !registeredApps.isEmpty()){
 			Message message = Message.obtain();
@@ -1864,6 +1882,9 @@ public class SdlRouterService extends Service{
 				return;
 			}
 			registeredApps.clear();
+		}
+		if (type == TransportType.USB) {
+			notifyUsbDisconnect();
 		}
 	}
 

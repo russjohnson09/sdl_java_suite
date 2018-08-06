@@ -97,10 +97,10 @@ public class XmaSocket {
                 mSendBuffer.clear();
                 mSendBuffer.put(packet.getData(), 0, packet.getLength());
                 mSendBuffer.flip();
-                Log.d(TAG, "XmaSocket:send " + packet.getLength() + " bytes");
+                //Log.d(TAG, "XmaSocket:send " + packet.getLength() + " bytes");
                 mNetconnSocket.send(mSendBuffer);
             } catch(IOException e) {
-                e.printStackTrace();
+                //e.printStackTrace();
             }
         }
     }
