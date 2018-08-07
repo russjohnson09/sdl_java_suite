@@ -241,7 +241,7 @@ public class XmaSocket {
 
     public void stopReaderTask() {
         if (mNetconnSocket != null) {
-            try { mNetconnSocket.close(); } catch (IOException _) {}
+            try { mNetconnSocket.close(); } catch (IOException e) {}
             if (mReaderExecutor != null) {
                 // wait until receive thread stops, then put null to mRtcpSocket
                 mReaderExecutor.shutdownNow();
