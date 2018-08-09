@@ -1,12 +1,9 @@
 package com.smartdevicelink.transport;
 
-import android.bluetooth.BluetoothAdapter;
-import android.bluetooth.BluetoothDevice;
-import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;
+import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
@@ -15,9 +12,13 @@ import android.util.Log;
 
 import com.smartdevicelink.protocol.SdlPacket;
 import com.smartdevicelink.transport.enums.TransportType;
+import com.smartdevicelink.transport.utl.TransportRecord;
+import com.smartdevicelink.util.AndroidTools;
 
 import java.lang.ref.WeakReference;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public class TransportManager {
@@ -27,14 +28,15 @@ public class TransportManager {
 
     TransportBrokerThread _brokerThread;
     TransportBrokerImpl transport;
-    final HashMap<TransportType, Boolean> transportStatus;
+    //final HashMap<TransportType, Boolean> transportStatus;
+    final List<TransportRecord> transportStatus;
     final TransportEventListener transportListener;
-    final WeakReference<Context> contextWeakReference;
 
     //Legacy Transport
     MultiplexBluetoothTransport legacyBluetoothTransport;
     LegacyBluetoothHandler legacyBluetoothHandler;
 
+    private final boolean requiresHighBandwidth;
 
     /**
      * Managing transports
@@ -47,17 +49,17 @@ public class TransportManager {
         this.transportListener = listener;
         this.TRANSPORT_STATUS_LOCK = new Object();
         synchronized (TRANSPORT_STATUS_LOCK){
-            this.transportStatus = new HashMap<>();
-            this.transportStatus.put(TransportType.BLUETOOTH, false);
-            this.transportStatus.put(TransportType.USB, false);
-            this.transportStatus.put(TransportType.TCP, false);
+            this.transportStatus = new ArrayList<>();
+           // this.transportStatus = new HashMap<>();
+           // this.transportStatus.put(TransportType.BLUETOOTH, false);
+           // this.transportStatus.put(TransportType.USB, false);
+           // this.transportStatus.put(TransportType.TCP, false);
         }
 
         if(config.service == null) {
             config.service = SdlBroadcastReceiver.consumeQueuedRouterService();
         }
-
-        contextWeakReference = new WeakReference<>(config.context);
+        requiresHighBandwidth = config.requiresHighBandwidth;
 
         RouterServiceValidator validator = new RouterServiceValidator(config.context,config.service);
         if(validator.validate()){
@@ -101,15 +103,37 @@ public class TransportManager {
      *                      true value will be returned.
      * @return
      */
-    public boolean isConnected(TransportType transportType){
-        if(transportType != null && transportStatus != null){
-            return transportStatus.get(transportType);
+    public boolean isConnected(TransportType transportType, String address){
+        synchronized (TRANSPORT_STATUS_LOCK) {
+            if (transportType == null) {
+                return !transportStatus.isEmpty();
+            }
+            for (TransportRecord record : transportStatus) {
+                if (record.getType().equals(transportType)) {
+                    if (address != null) {
+                        if (address.equals(record.getAddress())) {
+                            return true;
+                        } // Address doesn't match, move forward
+                    } else {
+                        //If no address is included, assume any transport of correct type is acceptable
+                        return true;
+                    }
+                }
+            }
+            return false;
         }
-        return transportStatus.values().contains(true);
     }
 
     public boolean isHighBandwidthAvailable(){
-        return transportStatus.get(TransportType.USB) ||  transportStatus.get(TransportType.TCP);
+        synchronized (TRANSPORT_STATUS_LOCK) {
+            for (TransportRecord record : transportStatus) {
+                if (record.getType().equals(TransportType.USB)
+                        || record.getType().equals(TransportType.TCP)) {
+                    return true;
+                }
+            }
+            return false;
+        }
     }
 
     public ComponentName getRouterService(){
@@ -128,24 +152,17 @@ public class TransportManager {
         }
     }
 
-    private void resetTransports(){
-        this.transportStatus.put(TransportType.BLUETOOTH, false);
-        this.transportStatus.put(TransportType.USB, false);
-        this.transportStatus.put(TransportType.TCP, false);
-
-    }
-
     public void requestNewSession(TransportType transportType){
         Log.d(TAG, "requestNewSession : transportType=" + transportType.name());
         if(transport!=null){
-            transport.requestNewSession(transportType);
+            transport.requestNewSession(transportType, requiresHighBandwidth);
         }else if(legacyBluetoothTransport != null && !TransportType.BLUETOOTH.equals(transportType)){
             Log.w(TAG, "Session requested for non-bluetooth transport while in legacy mode");
         }
     }
 
-    public void sendSecondaryTransportDetails(byte sessionId, Map<String, Object> params){
-    	transport.sendSecondaryTransportDetails(sessionId, params);
+    public void requestSecondaryTransportConnection(byte sessionId, Bundle params){
+    	transport.requestSecondaryTransportConnection(sessionId, params);
     }
 
     private class TransportBrokerImpl extends TransportBroker{
@@ -155,39 +172,62 @@ public class TransportManager {
         }
 
         @Override
-        public boolean onHardwareConnected(TransportType[] types) {
-            Log.d(TAG, "onHardwareConnected: " + types.toString());
-            super.onHardwareConnected(types);
-            synchronized (TRANSPORT_STATUS_LOCK){
-                resetTransports();
-                for(int i = 0; i< types.length; i++){
-                    TransportManager.this.transportStatus.put(types[i],true);
-                    Log.d(TAG, "Transport connected: " + types[i].name());
-                }
-            }
-            transportListener.onTransportConnected(types);
-            return true;
+        public boolean onHardwareConnected(TransportType transportType){
+            return false;
         }
 
         @Override
-        public void onHardwareDisconnected(TransportType type) {
-            if(type != null){
-                Log.d(TAG, "Transport disconnected - " + type.name());
+        public boolean onHardwareConnected(List<TransportRecord> transports) {
+            Log.d(TAG, "onHardwareConnected - " +transports.size());
+            super.onHardwareConnected(transports);
+            boolean containsUSB = false;
+            synchronized (TRANSPORT_STATUS_LOCK){
+                transportStatus.clear();
+                transportStatus.addAll(transports);
+                for(TransportRecord record: transportStatus){
+                    Log.d(TAG, "Transport connected: " + record.getType().name());
+                    if (record.getType() == TransportType.USB) {
+                        containsUSB = true;
+                    }
+                }
+            }
+            transportListener.onTransportConnected(transports);
+            if (containsUSB) {
+                Log.d(TAG, "connectedHardware contains USB; going to send broadcast");
+                Intent usbAccessoryIntent = new Intent(USBTransport.ACTION_USB_ACCESSORY_ATTACHED);
+                usbAccessoryIntent.putExtra(TransportConstants.START_ROUTER_SERVICE_SDL_ENABLED_EXTRA, true);
+                AndroidTools.sendExplicitBroadcast(super.getContext(), usbAccessoryIntent, null);
+            }
+            return true;
+        }
+
+
+        @Override
+        public void onHardwareDisconnected(TransportRecord record, List<TransportRecord> connectedTransports) {
+            if(record != null){
+                Log.d(TAG, "Transport disconnected - " + record);
             }else{
                 Log.d(TAG, "Transport disconnected");
 
             }
-            super.onHardwareDisconnected(type);
-            synchronized (TRANSPORT_STATUS_LOCK){
-                TransportManager.this.transportStatus.put(type,false);
+            if(connectedTransports == null || connectedTransports.isEmpty()){
+                //There are no more transports to use so we can unbind
+                super.onHardwareDisconnected(record,connectedTransports);
             }
+
+            synchronized (TRANSPORT_STATUS_LOCK){
+                TransportManager.this.transportStatus.remove(record);
+                //Might check connectedTransports vs transportStatus to ensure they are equal
+            }
+
             if(isLegacyModeEnabled()
-                    && TransportType.BLUETOOTH.equals(type) //Make sure it's bluetooth that has be d/c
+                    && TransportType.BLUETOOTH.equals(record.getType()) //Make sure it's bluetooth that has be d/c
                     && legacyBluetoothTransport == null){ //Make sure we aren't already in legacy mode
                 //Legacy mode has been enabled so we need to cycle
                 enterLegacyMode("Router service has enabled legacy mode");
             }else{
-                transportListener.onTransportDisconnected("",type);
+                //Inform the transport listener that a transport has disconnected
+                transportListener.onTransportDisconnected("", record, connectedTransports);
             }
         }
 
@@ -264,6 +304,9 @@ public class TransportManager {
         }
 
         if(transportListener.onLegacyModeEnabled(info)) {
+            if(Looper.myLooper() == null){
+                Looper.prepare();
+            }
             legacyBluetoothHandler = new LegacyBluetoothHandler(this);
             legacyBluetoothTransport = new MultiplexBluetoothTransport(legacyBluetoothHandler);
         }else{
@@ -284,9 +327,9 @@ public class TransportManager {
         }
         legacyBluetoothHandler = null;
         synchronized (TRANSPORT_STATUS_LOCK){
-            TransportManager.this.transportStatus.put(TransportType.BLUETOOTH,false);
+            TransportManager.this.transportStatus.clear();
         }
-        transportListener.onTransportDisconnected(info, TransportType.BLUETOOTH);
+        transportListener.onTransportDisconnected(info, new TransportRecord(TransportType.BLUETOOTH,null),null);
     }
 
     public interface TransportEventListener{
@@ -294,10 +337,10 @@ public class TransportManager {
         void onPacketReceived(SdlPacket packet);
 
         /** Called to indicate that transport connection was established */
-        void onTransportConnected(TransportType[] transportTypes);
+        void onTransportConnected(List<TransportRecord> transports);
 
         /** Called to indicate that transport was disconnected (by either side) */
-        void onTransportDisconnected(String info, TransportType type);
+        void onTransportDisconnected(String info, TransportRecord type, List<TransportRecord> connectedTransports);
 
         // Called when the transport manager experiences an unrecoverable failure
         void onError(String info);
@@ -315,55 +358,10 @@ public class TransportManager {
     private static class LegacyBluetoothHandler extends Handler{
 
         final WeakReference<TransportManager> provider;
-        static final TransportType[] FAUX_TRANSPORT_ARRAY = {TransportType.BLUETOOTH};
-
-        final BroadcastReceiver disconnectReceiver = new BroadcastReceiver(){
-            @Override
-            @SuppressWarnings("MissingPermission")
-            public void onReceive(Context context, Intent intent){
-                String action = intent.getAction();
-                if(action != null){
-                    if(action.equalsIgnoreCase(BluetoothAdapter.ACTION_STATE_CHANGED)){
-                        int bluetoothState = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, -1);
-                        switch (bluetoothState) {
-                            case BluetoothAdapter.STATE_TURNING_ON:
-                            case BluetoothAdapter.STATE_ON:
-                                //There is nothing to do in the case the adapter is turning on or just switched to on
-                                return;
-                            default:
-                                break;
-                        }
-                    }
-                    //Otherwise
-                    if(provider.get() != null){
-                        provider.get().exitLegacyMode("Bluetooth no longer available during legacy mode operation");
-                    }
-                }
-            }
-        };
 
         public LegacyBluetoothHandler(TransportManager provider){
             this.provider = new WeakReference<TransportManager>(provider);
-
-            //Registering our receiver in case of BT disconnect  or shut off
-            Context context = provider.contextWeakReference.get();
-            if(context != null) {
-                IntentFilter disconnectFilter = new IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED);
-                disconnectFilter.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED);
-                disconnectFilter.addAction(BluetoothDevice.ACTION_ACL_DISCONNECT_REQUESTED);
-                context.registerReceiver(disconnectReceiver, disconnectFilter);
-            }
         }
-
-        protected void unregisterDisconnectReceiver(Context context){
-            //Remove the disconnect receiver as it is no longer needed.
-            try{
-                if(context != null){
-                    context.unregisterReceiver(disconnectReceiver);
-                }
-            }catch (Exception e){}
-        }
-
         @Override
         public void handleMessage(Message msg) {
             if(this.provider.get() == null){
@@ -378,10 +376,10 @@ public class TransportManager {
                     switch (msg.arg1) {
                         case MultiplexBaseTransport.STATE_CONNECTED:
                             synchronized (service.TRANSPORT_STATUS_LOCK){
-                                service.transportStatus.put(TransportType.BLUETOOTH,true);
+                                service.transportStatus.clear();
+                                service.transportStatus.add(service.legacyBluetoothTransport.getTransportRecord());
                             }
-                            service.transportListener.onTransportConnected(FAUX_TRANSPORT_ARRAY);
-                            unregisterDisconnectReceiver(service.contextWeakReference.get());
+                            service.transportListener.onTransportConnected(service.transportStatus);
                             break;
                         case MultiplexBaseTransport.STATE_CONNECTING:
                             // Currently attempting to connect - update UI?
@@ -390,12 +388,10 @@ public class TransportManager {
                             break;
                         case MultiplexBaseTransport.STATE_NONE:
                             // We've just lost the connection
-                            unregisterDisconnectReceiver(service.contextWeakReference.get());
                             service.exitLegacyMode("Lost connection");
                             break;
                         case MultiplexBaseTransport.STATE_ERROR:
                             Log.d(TAG, "Bluetooth serial server error received, setting state to none, and clearing local copy");
-                            unregisterDisconnectReceiver(service.contextWeakReference.get());
                             service.exitLegacyMode("Transport error");
                             break;
                     }

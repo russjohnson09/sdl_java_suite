@@ -2,6 +2,7 @@ package com.smartdevicelink.SdlConnection;
 
 import android.annotation.SuppressLint;
 import android.os.Build;
+import android.os.Bundle;
 import android.util.Log;
 import android.view.Surface;
 
@@ -34,6 +35,18 @@ import com.smartdevicelink.transport.BaseTransportConfig;
 import com.smartdevicelink.transport.MultiplexTransportConfig;
 import com.smartdevicelink.transport.TransportManager;
 import com.smartdevicelink.transport.enums.TransportType;
+import com.smartdevicelink.transport.utl.TransportRecord;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.PipedInputStream;
+import java.io.PipedOutputStream;
+import java.util.HashMap;
+import java.util.List;
+import java.util.ListIterator;
+import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -62,6 +75,7 @@ public class SdlSession implements  IProtocolListener, TransportManager.Transpor
 	private VideoStreamingParameters desiredVideoParams = null;
 	private VideoStreamingParameters acceptedVideoParams = null;
 	private CopyOnWriteArrayList<SessionType> encryptedServices = new CopyOnWriteArrayList<SessionType>();
+	private boolean requestedSession = false;
 
 	IHeartbeatMonitor _outgoingHeartbeatMonitor = null;
 	IHeartbeatMonitor _incomingHeartbeatMonitor = null;
@@ -87,6 +101,7 @@ public class SdlSession implements  IProtocolListener, TransportManager.Transpor
 	}
 
 	public SdlSession(ISdlConnectionListener listener, MultiplexTransportConfig config){
+		Log.d(TAG, "SdlSession created");
 		transportConfig = config;
 		sessionListener = listener;
 		synchronized(PROTOCOL_REFERENCE_LOCK) {
@@ -514,7 +529,7 @@ public class SdlSession implements  IProtocolListener, TransportManager.Transpor
 	}
 	
 	public boolean getIsConnected() {
-		return transportManager != null && transportManager.isConnected(null);
+		return transportManager != null && transportManager.isConnected(null,null);
 	}
 	
 	public boolean isServiceProtected(SessionType sType) {
@@ -536,33 +551,34 @@ public class SdlSession implements  IProtocolListener, TransportManager.Transpor
 	}
 
 	@Override
-	public void onTransportConnected(TransportType[] transportTypes) {
+	public void onTransportConnected(List<TransportRecord> connectedTransports) {
 		synchronized (PROTOCOL_REFERENCE_LOCK) {
-            if(wiProProtocol != null){
-                Log.d(TAG, "onTransportConnected");
-                //In the future we should move this logic into the Protocol Layer
-                TransportType type = wiProProtocol.getTransportForSession(SessionType.RPC);
-                if(type == null){ //There is currently no transport registered
-                    wiProProtocol.setConnectedPrimaryTransport(transportTypes);
-                    if(wiProProtocol.getConnectedPrimaryTransport() != null){
-                        transportManager.requestNewSession(wiProProtocol.getConnectedPrimaryTransport());
-                    }
-                }
-                wiProProtocol.onTransportsConnectedUpdate(transportTypes);
-                wiProProtocol.printActiveTransports();
-            }
-        }
+			if (wiProProtocol != null) {
+				Log.d(TAG, "onTransportConnected");
+				//In the future we should move this logic into the Protocol Layer
+				TransportType type = wiProProtocol.getTransportForSession(SessionType.RPC);
+				if (type == null && !requestedSession) { //There is currently no transport registered
+					requestedSession = true;
+					transportManager.requestNewSession(wiProProtocol.getPreferredPrimaryTransport(connectedTransports));
+				}
+				wiProProtocol.onTransportsConnectedUpdate(connectedTransports);
+				wiProProtocol.printActiveTransports();
+			}
+		}
 	}
 
 	@Override
-	public void onTransportDisconnected(String info, TransportType type) {
-		if (type == null) {
+	public void onTransportDisconnected(String info, TransportRecord disconnectedTransport, List<TransportRecord> connectedTransports) {
+		if (disconnectedTransport == null) {
 			Log.d(TAG, "onTransportDisconnected");
 			return;
 		} else {
-			Log.d(TAG, "onTransportDisconnected - " + type.name());
+			Log.d(TAG, "onTransportDisconnected - " + disconnectedTransport.getType().name());
 		}
 
+		//In the future we will actually compare the record but at this point we can assume only
+		//a single transport record per transport.
+		TransportType type = disconnectedTransport.getType();
 		if(type.equals(wiProProtocol.getTransportForSession(SessionType.NAV))){
 			stopVideoStream();
 			Log.d(TAG, "Stopping video stream.");
@@ -573,7 +589,7 @@ public class SdlSession implements  IProtocolListener, TransportManager.Transpor
 		}
 
 		Log.d(TAG, "rpc transport? - " + wiProProtocol.getTransportForSession(SessionType.RPC));
-		if(type != null && type.equals(wiProProtocol.getTransportForSession(SessionType.RPC))){
+		if(type.equals(wiProProtocol.getTransportForSession(SessionType.RPC))){
 			final MultiplexTransportConfig config = (MultiplexTransportConfig)this.transportConfig;
 			List<TransportType> transportTypes = config.getPrimaryTransports();
 			//transportTypes.remove(type);
@@ -582,7 +598,7 @@ public class SdlSession implements  IProtocolListener, TransportManager.Transpor
 				for (TransportType transportType: transportTypes){ Log.d(TAG, "Checking " + transportType.name());
 					if( type != null && !type.equals(transportType)
 							&& transportManager != null
-							&& transportManager.isConnected(transportType)){
+							&& transportManager.isConnected(transportType,null)){
 						Log.d(TAG, "Found a suitable transport");
 						primaryTransportAvailable = wiProProtocol.getProtocolVersion().isNewerThan(new com.smartdevicelink.util.Version("5.1.0")) >= 1;
 						((MultiplexTransportConfig) this.transportConfig).setService(transportManager.getRouterService());
@@ -592,8 +608,11 @@ public class SdlSession implements  IProtocolListener, TransportManager.Transpor
 			}
 			this.transportManager.close(this.sessionId);
 			this.transportManager = null;
+			requestedSession = false;
 			this.sessionListener.onTransportDisconnected(info, primaryTransportAvailable, (MultiplexTransportConfig)this.transportConfig);
 
+		}else{
+			Log.d(TAG, "Transport was not primary, continuing to stay connected");
 		}
 
 	}
@@ -639,7 +658,7 @@ public class SdlSession implements  IProtocolListener, TransportManager.Transpor
 
 	@Override
 	public void onProtocolMessageBytesToSend(SdlPacket packet) {
-		//Log.d(TAG, "onProtocolMessageBytesToSend TransportType: " + packet.getTransportType());
+		//Log.d(TAG, "onProtocolMessageBytesToSend - " + packet.getTransportType());
 		if(transportManager != null){
 			transportManager.sendPacket(packet);
 		}
@@ -695,9 +714,9 @@ public class SdlSession implements  IProtocolListener, TransportManager.Transpor
 	}
 
 	@Override
-	public void connectSecondaryTransport(byte sessionId, TransportType transportType, Map<String, Object> params) {
+	public void connectSecondaryTransport(byte sessionId, TransportType transportType, Bundle params) {
 		Log.d(TAG, "Connect Secondary Transport");
-		transportManager.sendSecondaryTransportDetails(sessionId, params);
+		transportManager.requestSecondaryTransportConnection(sessionId, params);
 	}
 
 	@Override

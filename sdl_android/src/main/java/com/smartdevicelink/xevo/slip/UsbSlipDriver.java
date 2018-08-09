@@ -720,7 +720,7 @@ public class UsbSlipDriver implements ISlipDriver {
                         }
                         // also send broadcast
                         if (mState == State.CONNECTED) {
-                            DebugTool.logInfo("about sending AOA_ROUTER_OPEN_ACCESSORY broadcast");
+                            DebugTool.logInfo("about sending AOA_OPEN_ACCESSORY broadcast");
                             Intent intent = new Intent(TransportConstants.AOA_OPEN_ACCESSORY);
                             mContext.sendBroadcast(intent);
                         }

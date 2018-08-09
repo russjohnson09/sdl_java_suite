@@ -48,6 +48,7 @@ public class XevoMultiplexSlipTransport extends MultiplexBaseTransport {
 		mHandler = handler;
 		mConfig = new XevoSlipTransportConfig(TCPAdapterPort, SLIP_PEER_ADDRESS, true);
 		mState = STATE_NONE;
+		connectedDeviceAddress = "USB";
 	}
 	/**
 	 * Constructor: prepares the new AOA transport session.
@@ -136,7 +137,7 @@ public class XevoMultiplexSlipTransport extends MultiplexBaseTransport {
 			String action = intent.getAction();
 			DebugTool.logInfo("mUSBReceiver onReceive:action=" + action);
 			if (action.equals(TransportConstants.AOA_OPEN_ACCESSORY)) {
-				DebugTool.logInfo("AOA_ROUTER_OPEN_ACCESSORY");
+				DebugTool.logInfo("AOA_OPEN_ACCESSORY");
 				startReaderThread();
 			} else if (action.equals(UsbManager.ACTION_USB_ACCESSORY_DETACHED)) {
 				DebugTool.logInfo("ACTION_USB_ACCESSORY_DETACHED");
@@ -249,7 +250,7 @@ public class XevoMultiplexSlipTransport extends MultiplexBaseTransport {
 					if (connected) {
 						Log.d(TAG, "NetconnSocket connected");
 						setState(STATE_CONNECTED);
-						mHandler.obtainMessage(SdlRouterService.MESSAGE_STATE_CHANGE, MultiplexBaseTransport.STATE_CONNECTED, 0, TransportType.USB).sendToTarget(); // Let RouterService know HARDWARE_CONNECTED.
+						mHandler.obtainMessage(SdlRouterService.MESSAGE_STATE_CHANGE, MultiplexBaseTransport.STATE_CONNECTED, 0, getTransportRecord()).sendToTarget(); // Let RouterService know HARDWARE_CONNECTED.
 					} else {
 						if(mConfig.getAutoReconnect()){
 							remainingRetry--;
