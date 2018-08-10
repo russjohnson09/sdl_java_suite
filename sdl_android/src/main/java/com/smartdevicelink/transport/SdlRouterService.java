@@ -1670,6 +1670,9 @@ public class SdlRouterService extends Service{
 
 	private ArrayList<TransportRecord> getConnectedTransports(){
 		ArrayList<TransportRecord> connected = new ArrayList<>();
+		if (slipTransport != null && slipTransport.isConnected()) {
+			connected.add(slipTransport.getTransportRecord());
+		}
         if(bluetoothTransport != null && bluetoothTransport.isConnected()){
             connected.add(bluetoothTransport.getTransportRecord());
         }
@@ -1678,9 +1681,9 @@ public class SdlRouterService extends Service{
             connected.add(tcpTransport.getTransportRecord());
         }
 
-        if(usbTransport != null && usbTransport.isConnected()){
-            connected.add(usbTransport.getTransportRecord());
-        }
+        //if(usbTransport != null && usbTransport.isConnected()){
+        //    connected.add(usbTransport.getTransportRecord());
+        //}
 
         Log.d(TAG, "Returning connected transport size: " + connected.size());
 		return connected;
