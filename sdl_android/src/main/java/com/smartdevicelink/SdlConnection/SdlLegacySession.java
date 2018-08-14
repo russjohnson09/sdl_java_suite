@@ -223,7 +223,7 @@ public class SdlLegacySession  extends SdlSession implements ISdlConnectionListe
         _sdlConnection.endService(serviceType, sessionID);
     }
 
-    private void processControlService(ProtocolMessage msg) {
+    protected void processControlService(ProtocolMessage msg) {
         if (sdlSecurity == null)
             return;
         int ilen = msg.getData().length - 12;
@@ -283,7 +283,7 @@ public class SdlLegacySession  extends SdlSession implements ISdlConnectionListe
         connection.registerSession(this); //Handshake will start when register.
     }
 
-    private void initialiseSession() {
+    protected void initialiseSession() {
         if (_outgoingHeartbeatMonitor != null) {
             _outgoingHeartbeatMonitor.start();
         }
@@ -489,8 +489,8 @@ public class SdlLegacySession  extends SdlSession implements ISdlConnectionListe
             }
         }
     }
-    public static void removeConnection(SdlConnection connection){
-        shareConnections.remove(connection);
+    public static boolean removeConnection(SdlConnection connection){
+        return shareConnections.remove(connection);
     }
 
     public void addServiceListener(SessionType serviceType, ISdlServiceListener sdlServiceListener){
@@ -505,4 +505,17 @@ public class SdlLegacySession  extends SdlSession implements ISdlConnectionListe
         }
     }
 
+    private VideoStreamingProtocol getAcceptedProtocol() {
+        // acquire default protocol (RAW)
+        VideoStreamingProtocol protocol = new VideoStreamingParameters().getFormat().getProtocol();
+
+        if (acceptedVideoParams != null) {
+            VideoStreamingFormat format = acceptedVideoParams.getFormat();
+            if (format != null && format.getProtocol() != null) {
+                protocol = format.getProtocol();
+            }
+        }
+
+        return protocol;
+    }
 }

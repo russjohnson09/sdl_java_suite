@@ -1826,6 +1826,7 @@ public class SdlRouterService extends Service{
 	}
 	
 	private Message createHardwareConnectedMessage(final TransportRecord record){
+		Log.d(TAG, "about createHardwareConnectedMessage");
 			Message message = Message.obtain();
 			message.what = TransportConstants.HARDWARE_CONNECTION_EVENT;
 			Bundle bundle = new Bundle();
@@ -3193,8 +3194,14 @@ public class SdlRouterService extends Service{
 		}
 
 		public int sendMessage(Message message){
-			if(this.messenger == null){return SEND_MESSAGE_ERROR_MESSENGER_NULL;}
-			if(message == null){return SEND_MESSAGE_ERROR_MESSAGE_NULL;}
+			if(this.messenger == null){
+				Log.e(TAG, "sendMessage fail; because messenger is null");
+				return SEND_MESSAGE_ERROR_MESSENGER_NULL;
+			}
+			if(message == null){
+				Log.e(TAG, "sendMessage fail; because message is null");
+				return SEND_MESSAGE_ERROR_MESSAGE_NULL;
+			}
 			try {
 				this.messenger.send(message);
 				return SEND_MESSAGE_SUCCESS;

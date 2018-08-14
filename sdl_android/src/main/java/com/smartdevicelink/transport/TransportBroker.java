@@ -96,7 +96,7 @@ public class TransportBroker {
 				routerServiceMessenger = null;
 				registeredWithRouterService = false;
 				isBound = false;
-				onHardwareDisconnected(null);
+				onHardwareDisconnected(null, null);
 			}
 		};
 	}
@@ -430,7 +430,7 @@ public class TransportBroker {
 		}
 
 		public void onHardwareDisconnected(TransportRecord record, List<TransportRecord> connectedTransports){
-            routerServiceDisconnect();
+
 		}
 
 		private void routerServiceDisconnect(){
