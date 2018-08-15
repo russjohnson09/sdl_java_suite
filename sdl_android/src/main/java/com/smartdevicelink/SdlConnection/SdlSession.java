@@ -310,6 +310,11 @@ public class SdlSession implements ISdlConnectionListener, IHeartbeatMonitorList
         if (mVideoPacketizer != null)
         {
             mVideoPacketizer.stop();
+            // we have to EndService too
+            CopyOnWriteArrayList<ISdlServiceListener> listeners = serviceListeners.get(SessionType.NAV);
+            for(ISdlServiceListener listener:listeners){
+                listener.onServiceEnded(this, SessionType.NAV);
+            }
             return true;
         }
         return false;
