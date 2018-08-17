@@ -7,9 +7,10 @@ android {
         minSdkVersion 8
         targetSdkVersion 19
         versionCode 3
-        versionName "4.5.0"
+        versionName "4.7.0"
         testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
         resValue "string", "SDL_LIB_VERSION", '\"' + versionName + '\"'
+        project.ext.set("archivesBaseName", "sdl_android-i-" + defaultConfig.versionName + "-" + project.version_number);
     }
     buildTypes {
         release {
@@ -17,7 +18,7 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
         debug {
-            //testCoverageEnabled = true // temporarily disable testCoverage for importing aar.
+            testCoverageEnabled = false //  disable testCoverage for importing aar.
         }
     }
     compileOptions {
