@@ -21,3 +21,13 @@ allprojects {
 task clean(type: Delete) {
     delete rootProject.buildDir
 }
+
+ext {
+    if (System.getenv("BUILD_NUMBER") == null) {
+        // This is a local build, just default to 1
+        version_number = "1.000001"
+    } else {
+        // For a CI build, use {SDL version}-1.1xxxxx
+        version_number = String.format("1.1%05d", Integer.parseInt(System.getenv("BUILD_NUMBER")))
+    }
+}
