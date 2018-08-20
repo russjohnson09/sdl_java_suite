@@ -1,14 +1,17 @@
 package com.smartdevicelink.transport;
 
+import android.annotation.TargetApi;
 import android.content.ComponentName;
 import android.content.Context;
-import android.content.Intent;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
 import android.os.Parcelable;
 import android.util.Log;
+import android.os.Looper;
+import android.os.ConditionVariable;
+import android.content.Intent;
 
 import com.smartdevicelink.protocol.SdlPacket;
 import com.smartdevicelink.transport.enums.TransportType;
@@ -31,12 +34,13 @@ public class TransportManager {
     //final HashMap<TransportType, Boolean> transportStatus;
     final List<TransportRecord> transportStatus;
     final TransportEventListener transportListener;
+    final WeakReference<Context> contextWeakReference;
 
     //Legacy Transport
     MultiplexBluetoothTransport legacyBluetoothTransport;
     LegacyBluetoothHandler legacyBluetoothHandler;
 
-    private final boolean requiresHighBandwidth;
+
 
     /**
      * Managing transports
@@ -50,27 +54,28 @@ public class TransportManager {
         this.TRANSPORT_STATUS_LOCK = new Object();
         synchronized (TRANSPORT_STATUS_LOCK){
             this.transportStatus = new ArrayList<>();
-           // this.transportStatus = new HashMap<>();
-           // this.transportStatus.put(TransportType.BLUETOOTH, false);
-           // this.transportStatus.put(TransportType.USB, false);
-           // this.transportStatus.put(TransportType.TCP, false);
+            // this.transportStatus = new HashMap<>();
+            // this.transportStatus.put(TransportType.BLUETOOTH, false);
+            // this.transportStatus.put(TransportType.USB, false);
+            // this.transportStatus.put(TransportType.TCP, false);
         }
 
         if(config.service == null) {
             config.service = SdlBroadcastReceiver.consumeQueuedRouterService();
         }
-        requiresHighBandwidth = config.requiresHighBandwidth;
 
+        Log.d(TAG, "config.service in TransportManager is " + config.service);
+        contextWeakReference = new WeakReference<>(config.context);
         RouterServiceValidator validator = new RouterServiceValidator(config.context,config.service);
         if(validator.validate()){
             //transport = new TransportBrokerImpl(config.context, config.appId,config.service);
-            _brokerThread = new TransportBrokerThread(config.context, config.appId, config.service);
-            _brokerThread.start();
-            try {
-                Thread.sleep(100);
-            } catch(InterruptedException e) {
-                e.printStackTrace();
+            ConditionVariable cond = new ConditionVariable();
+            if (config.service == null) {
+                config.service = validator.getService();
             }
+            _brokerThread = new TransportBrokerThread(config.context, config.appId, config.service, cond);
+            _brokerThread.start();
+            cond.block();
             transport = _brokerThread.getBroker();
         }else{
             enterLegacyMode("Router service is not trusted. Entering legacy mode");
@@ -153,16 +158,15 @@ public class TransportManager {
     }
 
     public void requestNewSession(TransportType transportType){
-        Log.d(TAG, "requestNewSession : transportType=" + transportType.name());
         if(transport!=null){
-            transport.requestNewSession(transportType, requiresHighBandwidth);
+            transport.requestNewSession(transportType, false);
         }else if(legacyBluetoothTransport != null && !TransportType.BLUETOOTH.equals(transportType)){
             Log.w(TAG, "Session requested for non-bluetooth transport while in legacy mode");
         }
     }
 
     public void requestSecondaryTransportConnection(byte sessionId, Bundle params){
-    	transport.requestSecondaryTransportConnection(sessionId, params);
+        transport.requestSecondaryTransportConnection(sessionId, params);
     }
 
     private class TransportBrokerImpl extends TransportBroker{
@@ -233,12 +237,14 @@ public class TransportManager {
         final String _appId;
         final ComponentName _service;
         Looper _threadLooper;
+        ConditionVariable mCond;
 
-        public TransportBrokerThread(Context context, String appId, ComponentName service) {
+        public TransportBrokerThread(Context context, String appId, ComponentName service, ConditionVariable cond) {
             super();
             this._context = context;
             this._appId = appId;
             this._service = service;
+            mCond = cond;
         }
 
         public void startConnection() {
@@ -254,6 +260,7 @@ public class TransportManager {
             }
         }
 
+        @TargetApi(18)
         public synchronized void cancel() {
             if (_broker == null) {
                 _broker.stop();
@@ -275,7 +282,10 @@ public class TransportManager {
                     this.notify();
                 }
                 _threadLooper = Looper.myLooper();
+                mCond.open();
                 Looper.loop();
+            } else {
+                mCond.open();
             }
 
         }

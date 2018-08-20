@@ -28,6 +28,7 @@ import android.util.Log;
 import com.smartdevicelink.util.AndroidTools;
 import com.smartdevicelink.util.HttpRequestTask;
 import com.smartdevicelink.util.HttpRequestTask.HttpRequestTaskCallback;
+import com.smartdevicelink.util.SdlAppInfo;
 
 /**
  * This class will tell us if the currently running router service is valid or not.
@@ -104,19 +105,19 @@ public class RouterServiceValidator {
 	 * @return whether or not the currently running router service can be trusted.
 	 */
 	public boolean validate(){
-		
+
 		if(securityLevel == -1){
 			securityLevel = getSecurityLevel(context);
 		}
-		
+
 		if(securityLevel == MultiplexTransportConfig.FLAG_MULTI_SECURITY_OFF){ //If security isn't an issue, just return true;
 			return true;
 		}
-		
+
 		PackageManager pm = context.getPackageManager();
 		//Grab the package for the currently running router service. We need this call regardless of if we are in debug mode or not.
 		String packageName = null;
-		
+
 		if(this.service != null){
 			Log.d(TAG, "Supplied service name of " + this.service.getClassName());
 			if(Build.VERSION.SDK_INT < Build.VERSION_CODES.O && !isServiceRunning(context,this.service)){
@@ -138,15 +139,23 @@ public class RouterServiceValidator {
 					return false;
 				}
 			}else{
-				wakeUpRouterServices();
-				return false;
+				List<SdlAppInfo> sdlAppInfoList = AndroidTools.querySdlAppInfo(this.context, new SdlAppInfo.BestRouterComparator());
+				if (sdlAppInfoList != null && !sdlAppInfoList.isEmpty()) {
+					SdlAppInfo info = sdlAppInfoList.get(0);
+					this.service = info.getRouterServiceComponentName();
+				}
+				if (this.service == null) {
+					Log.e(TAG, "Router service not found on Android O+; returning false");
+					wakeUpRouterServices();
+					return false;
+				}
 			}
 
 		}
-		
-		//Log.d(TAG, "Checking app package: " + service.getClassName());
+
+		Log.d(TAG, "Checking app package: " + service.getClassName());
 		packageName = this.appPackageForComponentName(service, pm);
-		
+
 
 		if(packageName!=null){//Make sure there is a service running
 			if(wasInstalledByAppStore(packageName)){ //Was this package installed from a trusted app store
@@ -154,7 +163,8 @@ public class RouterServiceValidator {
 					return true;
 				}
 			}
-		}//No running service found. Might need to attempt to start one
+		}
+		Log.e(TAG, "RouterService is not found. About waking up local router service");
 		//TODO spin up a known good router service
 		wakeUpRouterServices();
 		return false;
