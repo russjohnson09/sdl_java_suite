@@ -423,15 +423,15 @@ public class SdlRouterService extends Service{
 	            		returnBundle = new Bundle();
 	            		//Add params if connected
 	            		if(service.isTransportConnected){
-                            ArrayList<TransportRecord> records = service.getConnectedTransports();
-	            			returnBundle.putString(TransportConstants.HARDWARE_CONNECTED, records.get(records.size()-1).getType().name());
+							ArrayList<TransportRecord> records = service.getConnectedTransports();
+							returnBundle.putString(TransportConstants.HARDWARE_CONNECTED, records.get(records.size()-1).getType().name());
 							if(app.routerMessagingVersion > 1) {
 								returnBundle.putParcelableArrayList(TransportConstants.CURRENT_HARDWARE_CONNECTED, records);
 							}
 
-	                		if(MultiplexBluetoothTransport.currentlyConnectedDevice!=null){
-	                			returnBundle.putString(CONNECTED_DEVICE_STRING_EXTRA_NAME, MultiplexBluetoothTransport.currentlyConnectedDevice);
-	                		}
+							if(MultiplexBluetoothTransport.currentlyConnectedDevice!=null){
+								returnBundle.putString(CONNECTED_DEVICE_STRING_EXTRA_NAME, MultiplexBluetoothTransport.currentlyConnectedDevice);
+							}
 	            		}
 	            		//Add the version of this router service
 	            		returnBundle.putInt(TransportConstants.ROUTER_SERVICE_VERSION, SdlRouterService.ROUTER_SERVICE_VERSION_NUMBER);
@@ -3296,7 +3296,7 @@ public class SdlRouterService extends Service{
 		 * @return
 		 */
 		private TransportType getCompatPrimaryTransport(){
-			if(this.registeredTransports != null){
+			if(this.registeredTransports != null && this.registeredTransports.size() > 0 && (this.registeredTransports.valueAt(0) instanceof List)){
 				List<TransportType> transportTypes = this.registeredTransports.valueAt(0);
 				if(transportTypes != null){
 					if(transportTypes.get(0) != null){
