@@ -40,6 +40,7 @@ import android.util.Log;
 
 import com.smartdevicelink.protocol.SdlPacket;
 import com.smartdevicelink.transport.enums.TransportType;
+import com.smartdevicelink.transport.MultiplexBluetoothTransportUUID;
 
 /**
  * This class does all the work for setting up and managing Bluetooth
@@ -54,8 +55,6 @@ public class MultiplexBluetoothTransport extends MultiplexBaseTransport{
     //finals
 	private static final String TAG = "Bluetooth Transport";
     //private static final UUID SERVER_UUID= new UUID(0x936DA01F9ABD4D9DL, 0x80C702AF85C822A8L);
-    // Toyota UUID
-    private static final UUID SERVER_UUID= new UUID(0xCD6A760D4539441CL, 0xB04235FEB02E2765L);
     // Name for the SDP record when creating server socket
     private static final String NAME_SECURE =" SdlRouterService";
     // Key names received from the BluetoothSerialServer Handler
