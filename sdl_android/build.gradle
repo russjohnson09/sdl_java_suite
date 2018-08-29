@@ -2,7 +2,7 @@ apply plugin: 'com.android.library'
 
 android {
     compileSdkVersion 26
-    buildToolsVersion '27.0.3'
+    buildToolsVersion '26.0.3'
     defaultConfig {
         minSdkVersion 8
         targetSdkVersion 19
@@ -21,6 +21,37 @@ android {
             testCoverageEnabled = false //  disable testCoverage for importing aar.
         }
     }
+    /*--
+    flavorDimensions "oem", "region"
+    productFlavors {
+        toyota {
+            dimension "oem"
+        }
+        lexus {
+            dimension "oem"
+        }
+        daihatsu {
+            dimension "oem"
+        }
+        suzuki {
+            dimension "oem"
+        }
+        us {
+            dimension "region"
+        }
+        row {
+            dimension "region"
+        }
+        europe {
+            dimension "region"
+        }
+        australia {
+            dimension "region"
+        }
+        china {
+            dimension "region"
+        }
+    } --*/
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_7
         targetCompatibility JavaVersion.VERSION_1_7
@@ -37,6 +68,16 @@ android {
     testOptions {
         unitTests.returnDefaultValues = true
     }
+    /*--
+    variantFilter { variant ->
+        def name = variant.flavors*.name
+        // Daihatsu and Suzuki have single region (=row)
+        if (name.contains("daihatsu") || name.contains("suzuki")) {
+            if (name.contains("us") || name.contains("europe") || name.contains("australia") || name.contains("china")) {
+                setIgnore(true)
+            }
+        }
+    } --*/
 }
 
 dependencies {
