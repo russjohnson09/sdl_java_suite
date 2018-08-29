@@ -71,8 +71,6 @@ public class TransportConstants {
 
 	public static final String REQUIRES_HIGH_BANDWIDTH                          = "sdl.router.requires_high_bandwidth";
 
-	public static final String SDL_TRANSPORT_CONNECTED                          = "sdl.transport.connected";
-
 
 	/**
 	 * This class houses all important router service versions

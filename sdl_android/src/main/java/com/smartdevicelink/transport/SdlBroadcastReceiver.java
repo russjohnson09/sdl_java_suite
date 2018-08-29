@@ -73,8 +73,7 @@ public abstract class SdlBroadcastReceiver extends BroadcastReceiver{
         	return;
         }
         
-        if(action.equalsIgnoreCase(USBTransport.ACTION_USB_ACCESSORY_ATTACHED) ||
-				action.equalsIgnoreCase(TransportConstants.SDL_TRANSPORT_CONNECTED)){
+        if(action.equalsIgnoreCase(USBTransport.ACTION_USB_ACCESSORY_ATTACHED)){
         	Log.d(TAG, "Usb connected");
         	intent.setAction(null);
 			onSdlEnabled(context, intent);

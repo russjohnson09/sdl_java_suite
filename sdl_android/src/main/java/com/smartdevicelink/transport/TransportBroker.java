@@ -324,12 +324,6 @@ public class TransportBroker {
         			if(bundle.containsKey(TransportConstants.HARDWARE_CONNECTED) || bundle.containsKey(TransportConstants.CURRENT_HARDWARE_CONNECTED)){
             			//broker.onHardwareConnected(TransportType.valueOf(bundle.getString(TransportConstants.HARDWARE_CONNECTED)));
 
-            			if(bundle.containsKey(TransportConstants.CURRENT_HARDWARE_CONNECTED)){
-							ArrayList<TransportRecord> transports = bundle.getParcelableArrayList(TransportConstants.CURRENT_HARDWARE_CONNECTED);
-							broker.onHardwareConnected(transports);
-							broker.notifyTransportConnected(transports);
-						}
-        				break;
         			}
             		break;
             	default:
@@ -488,17 +482,6 @@ public class TransportBroker {
 			
 		}
 
-	public void notifyTransportConnected(List<TransportRecord> transports) {
-		Log.d(TAG, "notifyTransportConnected");
-		// broadcast TRANSPORT_CONNECTED
-		Intent broadcastIntent = new Intent(TransportConstants.SDL_TRANSPORT_CONNECTED);
-		ArrayList<String> transportsList = new ArrayList<>();
-		for (TransportRecord record: transports) {
-			transportsList.add(record.getType().name());
-		}
-		broadcastIntent.putStringArrayListExtra(TransportConstants.HARDWARE_CONNECTED, transportsList);
-		currentContext.sendBroadcast(broadcastIntent);
-	}
 		/**
 		 * We want to check to see if the Router service is already up and running
 		 * @param context
