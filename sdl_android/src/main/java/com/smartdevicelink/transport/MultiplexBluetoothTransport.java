@@ -40,7 +40,7 @@ import android.util.Log;
 
 import com.smartdevicelink.protocol.SdlPacket;
 import com.smartdevicelink.transport.enums.TransportType;
-import com.smartdevicelink.transport.MultiplexBluetoothTransportUUID;
+import static com.smartdevicelink.transport.MultiplexBluetoothTransportUUID.SERVER_UUID;
 
 /**
  * This class does all the work for setting up and managing Bluetooth
