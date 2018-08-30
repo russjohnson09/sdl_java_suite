@@ -11,6 +11,7 @@ import android.util.Log;
 
 import com.smartdevicelink.protocol.SdlPacket;
 import com.smartdevicelink.transport.enums.TransportType;
+import com.smartdevicelink.transport.utl.TransportRecord;
 import com.smartdevicelink.util.DebugTool;
 import com.smartdevicelink.xevo.slip.UsbSlipDriver;
 import com.smartdevicelink.xevo.transport.NetconnSocket;
@@ -289,7 +290,7 @@ public class XevoMultiplexSlipTransport extends MultiplexBaseTransport {
 								synchronized (this) {
 									Log.d(TAG, "Packet formed, sending off");
 									SdlPacket packet = mPsm.getFormedPacket();
-									packet.setTransportType(TransportType.USB);
+									packet.setTransportRecord(new TransportRecord(TransportType.USB, null));
 									mHandler.obtainMessage(SdlRouterService.MESSAGE_READ, packet).sendToTarget();
 								}
 								mPsm.reset();

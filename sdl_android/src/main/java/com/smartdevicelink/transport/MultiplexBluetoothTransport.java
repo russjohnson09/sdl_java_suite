@@ -40,6 +40,8 @@ import android.util.Log;
 
 import com.smartdevicelink.protocol.SdlPacket;
 import com.smartdevicelink.transport.enums.TransportType;
+import com.smartdevicelink.transport.utl.TransportRecord;
+
 import static com.smartdevicelink.transport.MultiplexBluetoothTransportUUID.SERVER_UUID;
 
 /**
@@ -235,6 +237,10 @@ public class MultiplexBluetoothTransport extends MultiplexBaseTransport{
         if(device != null){
         	currentlyConnectedDevice = device.getName();
             connectedDeviceAddress = device.getAddress();
+            if(connectedDeviceAddress!=null){
+                //Update the transport record with the address
+                transportRecord = new TransportRecord(transportType, connectedDeviceAddress);
+            }
         }
         
         // Send the name of the connected device back to the UI Activity
@@ -750,8 +756,6 @@ public class MultiplexBluetoothTransport extends MultiplexBaseTransport{
             byte input = 0;
             int bytesRead = 0;
             byte[] buffer = new byte[READ_BUFFER_SIZE];
-            MultiplexBluetoothTransport.currentlyConnectedDevice = mmSocket.getRemoteDevice().getName();
-            MultiplexBluetoothTransport.this.connectedDeviceAddress = mmSocket.getRemoteDevice().getAddress();
             // Keep listening to the InputStream while connected
             boolean stateProgress;
             
@@ -773,9 +777,9 @@ public class MultiplexBluetoothTransport extends MultiplexBaseTransport{
                         }
 
                         if (psm.getState() == SdlPsm.FINISHED_STATE) {
-                            Log.d(TAG, "Packet formed, sending off");
+                            //Log.d(TAG, "Packet formed, sending off");
                             SdlPacket packet = psm.getFormedPacket();
-                            packet.setTransportType(TransportType.BLUETOOTH);
+                            packet.setTransportRecord(getTransportRecord());
                             handler.obtainMessage(SdlRouterService.MESSAGE_READ, packet).sendToTarget();
                             psm.reset();
                         }
