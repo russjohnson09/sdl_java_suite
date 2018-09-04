@@ -2186,16 +2186,15 @@ public class SdlRouterService extends Service{
                         bluetoothTransport.write(packet, offset, count);
                         return true;
                     }
-					return true;
 				case TCP:
 					if(tcpTransport != null && tcpTransport.getState() ==  MultiplexBaseTransport.STATE_CONNECTED) {
 						tcpTransport.write(packet, offset, count);
 						return true;
 					}
-					default:
-						if(sendThroughAltTransport(bundle)){
-							return true;
-						}
+				default:
+					if(sendThroughAltTransport(bundle)){
+						return true;
+					}
 			}
 			Log.e(TAG, "Can't send data, no transport  of specified type connected");
 			return false;
@@ -2215,6 +2214,7 @@ public class SdlRouterService extends Service{
 						return true;
 					}
 					// fall through
+
 					if (slipTransport != null && slipTransport.getState() == MultiplexBaseTransport.STATE_CONNECTED) {
 						Log.d(TAG, String.format("slipTransport about writing %d bytes", count));
 						slipTransport.write(packet, offset, count);
