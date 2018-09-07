@@ -144,8 +144,9 @@ public class SdlRouterService extends Service{
 	/**
 	 * <b> NOTE: DO NOT MODIFY THIS UNLESS YOU KNOW WHAT YOU'RE DOING.</b>
 	 */
-	protected static final int ROUTER_SERVICE_VERSION_NUMBER = 8;
+	protected static final int ROUTER_SERVICE_VERSION_NUMBER = 7;
 
+	
 	private static final String ROUTER_SERVICE_PROCESS = "com.smartdevicelink.router";
 	
 	private static final int FOREGROUND_SERVICE_ID = 849;
@@ -199,6 +200,7 @@ public class SdlRouterService extends Service{
 
 	private static boolean connectAsClient = false;
 	private static boolean closing = false;
+	private boolean isTransportConnected = false;
 
     private Handler  altTransportTimerHandler, foregroundTimeoutHandler;
     private Runnable  altTransportTimerRunnable, foregroundTimeoutRunnable;
@@ -211,12 +213,12 @@ public class SdlRouterService extends Service{
 	private SparseArray<String> bluetoothSessionMap, usbSessionMap, slipSessionMap, tcpSessionMap;
 	private SparseIntArray sessionHashIdMap;
 	private SparseIntArray cleanedSessionMap;
-	private final Object SESSION_LOCK = new Object(), REGISTERED_APPS_LOCK = new Object(),
-			PING_COUNT_LOCK = new Object(), NOTIFICATION_LOCK = new Object();
+	private final Object SESSION_LOCK = new Object(), REGISTERED_APPS_LOCK = new Object(), PING_COUNT_LOCK = new Object();
 	
 	private static Messenger altTransportService = null;
 	
-	private boolean startSequenceComplete = false;
+	private String  connectedDeviceName = "";			//The name of the connected Device
+	private boolean startSequenceComplete = false;	
 	
 	private ExecutorService packetExecutor = null;
 	HashMap<TransportType, PacketWriteTaskMaster>  packetWriteTaskMasterMap = null;
@@ -434,9 +436,9 @@ public class SdlRouterService extends Service{
 
 	            		returnBundle = new Bundle();
 	            		//Add params if connected
-	            		if(service.isPrimaryTransportConnected()){
-                            ArrayList<TransportRecord> records = service.getConnectedTransports();
-	            			returnBundle.putString(TransportConstants.HARDWARE_CONNECTED, records.get(records.size()-1).getType().name());
+	            		if(service.isTransportConnected){
+							ArrayList<TransportRecord> records = service.getConnectedTransports();
+							returnBundle.putString(TransportConstants.HARDWARE_CONNECTED, records.get(records.size()-1).getType().name());
 							if(app.routerMessagingVersion > 1) {
 								returnBundle.putParcelableArrayList(TransportConstants.CURRENT_HARDWARE_CONNECTED, records);
 							}
@@ -786,14 +788,14 @@ public class SdlRouterService extends Service{
 	        		if(msg.replyTo!=null){
 	        			Message message = Message.obtain();
 	        			message.what = TransportConstants.ROUTER_STATUS_CONNECTED_STATE_RESPONSE;
-	        			message.arg1 = (service.isPrimaryTransportConnected()) ? 1 : 0;
+	        			message.arg1 = (service.isTransportConnected) ? 1 : 0;
 	        			try {
 	        				msg.replyTo.send(message);
 	        			} catch (RemoteException e) {
 	        				e.printStackTrace();
 	        			}
 	        		}
-	        		if(service.isPrimaryTransportConnected() && ((TransportConstants.ROUTER_STATUS_FLAG_TRIGGER_PING  & flags) == TransportConstants.ROUTER_STATUS_FLAG_TRIGGER_PING)){
+	        		if(service.isTransportConnected && ((TransportConstants.ROUTER_STATUS_FLAG_TRIGGER_PING  & flags) == TransportConstants.ROUTER_STATUS_FLAG_TRIGGER_PING)){
 	        			if(service.pingIntent == null){
 	        				service.initPingIntent();
 	        			}
@@ -851,7 +853,7 @@ public class SdlRouterService extends Service{
 	        				e.printStackTrace();
 	        			}
 	        		}
-	        		if(service.isPrimaryTransportConnected() && ((TransportConstants.ROUTER_STATUS_FLAG_TRIGGER_PING  & flags) == TransportConstants.ROUTER_STATUS_FLAG_TRIGGER_PING)){
+	        		if(service.isTransportConnected && ((TransportConstants.ROUTER_STATUS_FLAG_TRIGGER_PING  & flags) == TransportConstants.ROUTER_STATUS_FLAG_TRIGGER_PING)){
 	        			if(service.pingIntent == null){
 	        				service.initPingIntent();
 	        			}
@@ -1488,18 +1490,16 @@ public class SdlRouterService extends Service{
 		}
 		if(intent != null ){
 			if(intent.getBooleanExtra(FOREGROUND_EXTRA, false)){
-				if(!this.isPrimaryTransportConnected()) {	//If there is no transport connected we need to ensure the service is moved to the foreground
-					String address = null;
-					if(intent.hasExtra(BluetoothDevice.EXTRA_DEVICE)){
-						BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
-						if(device != null){
-							address = device.getAddress();
-						}
+				String address = null;
+				if(intent.hasExtra(BluetoothDevice.EXTRA_DEVICE)){
+					BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
+					if(device != null){
+						address = device.getAddress();
 					}
-					int timeout = getNotificationTimeout(address);
-					enterForeground("Waiting for connection...", timeout, false);
-					resetForegroundTimeOut(timeout);
 				}
+				int timeout = getNotificationTimeout(address);
+				enterForeground("Waiting for connection...", timeout, false);
+				resetForegroundTimeOut(timeout);
 			}
 			if(intent.hasExtra(TransportConstants.PING_ROUTER_SERVICE_EXTRA)){
 				//Make sure we are listening on RFCOMM
@@ -1631,30 +1631,26 @@ public class SdlRouterService extends Service{
 		if(android.os.Build.VERSION.SDK_INT < Build.VERSION_CODES.HONEYCOMB_MR2){
 			return;
 		}
-		synchronized (NOTIFICATION_LOCK) {
-			if (foregroundTimeoutHandler == null) {
-				foregroundTimeoutHandler = new Handler();
-			}
-			if (foregroundTimeoutRunnable == null) {
-				foregroundTimeoutRunnable = new Runnable() {
-					@Override
-					public void run() {
-						exitForeground();
-					}
-				};
-			} else {
-				//This instance likely means there is a callback in the queue so we should remove it
-				foregroundTimeoutHandler.removeCallbacks(foregroundTimeoutRunnable);
-			}
-			foregroundTimeoutHandler.postDelayed(foregroundTimeoutRunnable, delay);
+		if(foregroundTimeoutHandler == null){
+			foregroundTimeoutHandler = new Handler();
 		}
+		if(foregroundTimeoutRunnable == null) {
+			foregroundTimeoutRunnable = new Runnable() {
+				@Override
+				public void run() {
+					exitForeground();
+				}
+			};
+		}else{
+			//This instance likely means there is a callback in the queue so we should remove it
+			foregroundTimeoutHandler.removeCallbacks(foregroundTimeoutRunnable);
+		}
+		foregroundTimeoutHandler.postDelayed(foregroundTimeoutRunnable,delay);
 	}
 
 	public void cancelForegroundTimeOut(){
-		synchronized (NOTIFICATION_LOCK) {
-			if (foregroundTimeoutHandler != null && foregroundTimeoutRunnable != null) {
-				foregroundTimeoutHandler.removeCallbacks(foregroundTimeoutRunnable);
-			}
+		if(foregroundTimeoutHandler != null && foregroundTimeoutRunnable != null){
+			foregroundTimeoutHandler.removeCallbacks(foregroundTimeoutRunnable);
 		}
 
 	}
@@ -1679,14 +1675,8 @@ public class SdlRouterService extends Service{
 		}
        // Bitmap icon = BitmapFactory.decodeByteArray(SdlLogo.SDL_LOGO_STRING, 0, SdlLogo.SDL_LOGO_STRING.length);
 
-        Notification.Builder builder;
-		if(android.os.Build.VERSION.SDK_INT < Build.VERSION_CODES.O){
-			builder = new Notification.Builder(this);
-		} else {
-			builder = new Notification.Builder(this, SDL_NOTIFICATION_CHANNEL_ID);
-		}
-
-		if(0 != (getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE)){ //If we are in debug mode, include what app has the router service open
+        Notification.Builder builder = new Notification.Builder(this);
+        if(0 != (getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE)){ //If we are in debug mode, include what app has the router service open
         	ComponentName name = new ComponentName(this, this.getClass());
         	builder.setContentTitle("SDL: " + name.getPackageName());
         }else{
@@ -1717,87 +1707,60 @@ public class SdlRouterService extends Service{
         	builder.setUsesChronometer(true);
         	builder.setChronometerCountDown(true);
         }
-        synchronized (NOTIFICATION_LOCK) {
-			Notification notification;
-			if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.JELLY_BEAN) {
-				notification = builder.getNotification();
-
-			} else {
-				if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-					//Now we need to add a notification channel
-					NotificationManager notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-					if (notificationManager != null) {
-						NotificationChannel notificationChannel = new NotificationChannel(SDL_NOTIFICATION_CHANNEL_ID, SDL_NOTIFICATION_CHANNEL_NAME, NotificationManager.IMPORTANCE_LOW);
-						notificationChannel.enableLights(false);
-						notificationChannel.enableVibration(false);
-						notificationManager.createNotificationChannel(notificationChannel);
-					} else {
-						Log.e(TAG, "Unable to retrieve notification Manager service");
-						if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-							stopSelf();	//A valid notification channel must be supplied for SDK 27+
-						}
-					}
-
+        
+        Notification notification;
+        if(android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.JELLY_BEAN){
+        	notification = builder.getNotification();
+        	
+        }else{
+			if (Build.VERSION.SDK_INT>=Build.VERSION_CODES.O) {
+				//Now we need to add a notification channel
+				NotificationManager notificationManager =	(NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+				if(notificationManager != null) {
+					String channelId = SDL_NOTIFICATION_CHANNEL_ID;
+					int importance = NotificationManager.IMPORTANCE_DEFAULT;
+					NotificationChannel notificationChannel = new NotificationChannel(channelId, SDL_NOTIFICATION_CHANNEL_NAME, importance);
+					notificationChannel.enableLights(false);
+					notificationChannel.enableVibration(false);
+					notificationManager.createNotificationChannel(notificationChannel);
+					builder.setChannelId(channelId);
+				}else{
+					Log.e(TAG, "Unable to retrieve notification Manager service");
 				}
-				notification = builder.build();
+
 			}
-			if (notification == null) {
-				Log.e(TAG, "Notification was null");
-				if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-					stopSelf(); //A valid notification must be supplied for SDK 27+
-				}
-				return;
-			}
-			startForeground(FOREGROUND_SERVICE_ID, notification);
-			isForeground = true;
-		}
+        	notification = builder.build();
+        }
+        if(notification == null){
+        	Log.e(TAG, "Notification was null");
+			return;
+        }
+        startForeground(FOREGROUND_SERVICE_ID, notification);
+        isForeground = true;
  
     }
 
 	private void exitForeground(){
-		synchronized (NOTIFICATION_LOCK) {
-			if (isForeground && !isPrimaryTransportConnected()) {	//Ensure that the service is in the foreground and no longer connected to a transport
-				if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-					NotificationManager notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-					if (notificationManager != null
-							&& notificationManager.getNotificationChannel(SDL_NOTIFICATION_CHANNEL_ID) != null ) {
-						notificationManager.deleteNotificationChannel(TransportConstants.SDL_NOTIFICATION_CHANNEL_ID);
-					}
+		if(isForeground){
+			if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.O){
+				NotificationManager notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+				if(notificationManager!=null){
+					notificationManager.deleteNotificationChannel(TransportConstants.SDL_NOTIFICATION_CHANNEL_ID);
 				}
-
-				this.stopForeground(true);
-				isForeground = false;
 			}
+
+			this.stopForeground(true);
+			isForeground = false;
 		}
-	}
-
-
-	private String createConnectedNotificationText(){
-		StringBuilder builder = new StringBuilder();
-		builder.append("Connected to ");
-
-		if(bluetoothTransport!= null && bluetoothTransport.isConnected()){
-			builder.append(TransportType.BLUETOOTH.name().toLowerCase());
-		}
-
-		if(usbTransport != null && usbTransport.isConnected()){
-			if(builder.length() > 0){
-				builder.append(" & ");
-			}
-			builder.append(TransportType.USB.name());
-		}
-
-		return builder.toString();
 	}
 	
 	
 	/* **************************************************************************************************************************************
 	***********************************************  Helper Methods **************************************************************
 	****************************************************************************************************************************************/
-
-	@Deprecated
+	
 	public  String getConnectedDeviceName(){
-		return null;
+		return connectedDeviceName;
 	}
 
 	private ArrayList<TransportRecord> getConnectedTransports(){
@@ -1821,9 +1784,6 @@ public class SdlRouterService extends Service{
 		return connected;
 	}
 
-	private boolean isPrimaryTransportConnected(){
-		return isTransportConnected(TransportType.BLUETOOTH) || isTransportConnected(TransportType.USB);
-	}
 
 	private boolean isTransportConnected(TransportType transportType){
 		if(bluetoothTransport != null && transportType.equals(TransportType.BLUETOOTH)){
@@ -1926,8 +1886,9 @@ public class SdlRouterService extends Service{
    // }
 	public void onTransportConnected(final TransportRecord record){
 		Log.d(TAG, "onTransportConnected: " + record.getType().name());
+		isTransportConnected = true;
 		cancelForegroundTimeOut();
-		enterForeground(createConnectedNotificationText(),0,true);
+		enterForeground("Connected to " + this.getConnectedDeviceName(),0,true);
 
 		if(packetWriteTaskMasterMap == null){
 			packetWriteTaskMasterMap = new HashMap<>();
@@ -2005,8 +1966,9 @@ public class SdlRouterService extends Service{
 			notifyClients(message);
 		}
 		if(!getConnectedTransports().isEmpty()){
+			ArrayList<TransportRecord> transports = getConnectedTransports();
 			// Updates notification to one of still connected transport
-			enterForeground(createConnectedNotificationText(),0,true);
+			enterForeground("Connected to " + transports.get(transports.size() - 1),0,true);
 			return;
 		}else{
 			exitForeground();//Leave our foreground state as we don't have a connection anymore
@@ -2035,6 +1997,7 @@ public class SdlRouterService extends Service{
 
 		//TODO fix this part. We need to make sure there are no curerntly connected transports
 
+		isTransportConnected = false;
 		stopClientPings();
 
 
@@ -2120,6 +2083,7 @@ public class SdlRouterService extends Service{
 	            	case MESSAGE_DEVICE_NAME:
 						Bundle bundle = msg.getData();
 						if(bundle !=null) {
+							service.connectedDeviceName = bundle.getString(MultiplexBaseTransport.DEVICE_NAME);
 							service.setSDLConnectedStatus(bundle.getString(MultiplexBaseTransport.DEVICE_ADDRESS),true);
 						}
 	            		break;
@@ -2165,7 +2129,6 @@ public class SdlRouterService extends Service{
 			int offset = bundle.getInt(TransportConstants.BYTES_TO_SEND_EXTRA_OFFSET, 0); //If nothing, start at the beginning of the array
 			int count = bundle.getInt(TransportConstants.BYTES_TO_SEND_EXTRA_COUNT, packet.length);  //In case there isn't anything just send the whole packet.
 			TransportType transportType = TransportType.valueForString(bundle.getString(TransportConstants.TRANSPORT_TYPE));
-			Log.d(TAG, "writeBytesToTransport Transport=" + transportType.name());
 			switch ((transportType)){
 				case BLUETOOTH:
 					if(bluetoothTransport !=null && bluetoothTransport.getState() == MultiplexBluetoothTransport.STATE_CONNECTED) {
@@ -2201,7 +2164,6 @@ public class SdlRouterService extends Service{
 		}
 		
 		private boolean manuallyWriteBytes(TransportType transportType, byte[] packet, int offset, int count){
-			Log.d(TAG, "writeBytesToTransport Transport=" + transportType.name());
 			switch ((transportType)){
 				case BLUETOOTH:
 					if(bluetoothTransport !=null && bluetoothTransport.getState() == MultiplexBluetoothTransport.STATE_CONNECTED) {
@@ -2214,7 +2176,6 @@ public class SdlRouterService extends Service{
 						return true;
 					}
 					// fall through
-
 					if (slipTransport != null && slipTransport.getState() == MultiplexBaseTransport.STATE_CONNECTED) {
 						Log.d(TAG, String.format("slipTransport about writing %d bytes", count));
 						slipTransport.write(packet, offset, count);
@@ -2999,7 +2960,7 @@ public class SdlRouterService extends Service{
 	
 	private void startClientPings(){
 		synchronized(this){
-			if(!isPrimaryTransportConnected()){ //If we aren't connected, bail
+			if(!isTransportConnected){ //If we aren't connected, bail
 				return;
 			}
 		if(isPingingClients){
