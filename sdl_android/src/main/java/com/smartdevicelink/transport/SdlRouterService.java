@@ -88,6 +88,7 @@ import android.os.DeadObjectException;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.IBinder.DeathRecipient;
+import android.os.Looper;
 import android.os.Message;
 import android.os.Messenger;
 import android.os.Parcel;
@@ -2389,13 +2390,14 @@ public class SdlRouterService extends Service{
 	    			}
 
 				}else{	//If we can't find a session for this packet we just drop the packet
-					Log.e(TAG, "App Id was NULL for session! " + session);
 	    			TransportType transportType = packet.getTransportRecord().getType();
+					Log.e(TAG, "App Id was NULL for session! " + session + "; transportType=" + transportType.name());
+					// [shiniwa] I do think this removeSessionFromMap always fails...
 	    			if(removeSessionFromMap(session, Arrays.asList(transportType))){ //If we found the session id still tied to an app in our map we need to remove it and send the proper shutdown sequence.
 	    				Log.i(TAG, "Removed session from map.  Sending unregister request to module.");
 	    				attemptToCleanUpModule(session, packet.getVersion(), transportType);
 	    			}else{ //There was no mapping so let's try to resolve this
-	    				
+
 	    				if(packet.getFrameType() == FrameType.Single && packet.getServiceType() == SdlPacket.SERVICE_TYPE_RPC){
 	    					BinaryFrameHeader binFrameHeader = BinaryFrameHeader.parseBinaryHeader(packet.getPayload());
     		    			if(binFrameHeader!=null && FunctionID.UNREGISTER_APP_INTERFACE.getId() == binFrameHeader.getFunctionID()){
@@ -2645,6 +2647,10 @@ public class SdlRouterService extends Service{
 					if (usbSessionMap.indexOfKey(sessionId) >= 0) {
 						usbSessionMap.remove(sessionId);
 						retVal = true;
+					} else if (slipSessionMap.indexOfKey(sessionId) >= 0) {
+						Log.e(TAG, "about removing from slipSessionMap: session= " + sessionId );
+						slipSessionMap.remove(sessionId);
+						retVal = true;
 					}
 				} else if (transportTypes.contains(TransportType.TCP) && tcpSessionMap != null) {
 					if (tcpSessionMap.indexOfKey(sessionId) >= 0) {
@@ -2748,6 +2754,12 @@ public class SdlRouterService extends Service{
 					return null;
 			}
 
+			Log.d(TAG, "getAppIDForSession: transport=" + transportType + "; sessionMap=" + sessionMap.size() + "; sessionId=" + sessionId + "; newSession=" + newSession);
+			if (sessionMap != null && !newSession) {
+				for(int i=0; i<sessionMap.size(); i++) {
+					Log.d(TAG, "sessionMap(" + sessionMap.keyAt(i) + " = " + sessionMap.valueAt(i));
+				}
+			}
 			String appId = sessionMap.get(sessionId);
 			if(appId==null){
 				// If service type is RPC then we know we need to just skip ahead and see if there
@@ -2781,6 +2793,9 @@ public class SdlRouterService extends Service{
 						case BLUETOOTH:			//Check for BT as a secondary transport
 							//USB is potential primary
 							appId = usbSessionMap.get(sessionId);
+							if (appId == null) {
+								appId = slipSessionMap.get(sessionId);
+							}
 							// No other suitable transport for primary transport
 							break;
 						case USB:
