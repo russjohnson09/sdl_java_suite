@@ -439,7 +439,10 @@ public class SdlRouterService extends Service{
 	            		//Add params if connected
 	            		if(service.isTransportConnected){
 							ArrayList<TransportRecord> records = service.getConnectedTransports();
-							returnBundle.putString(TransportConstants.HARDWARE_CONNECTED, records.get(records.size()-1).getType().name());
+							if (!records.isEmpty()) {
+								// @REVIEW: the last record is always right? Is it guaranteed?
+								returnBundle.putString(TransportConstants.HARDWARE_CONNECTED, records.get(records.size() - 1).getType().name());
+							}
 							if(app.routerMessagingVersion > 1) {
 								returnBundle.putParcelableArrayList(TransportConstants.CURRENT_HARDWARE_CONNECTED, records);
 							}
