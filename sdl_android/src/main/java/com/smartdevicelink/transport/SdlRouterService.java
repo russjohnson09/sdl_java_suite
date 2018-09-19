@@ -2184,35 +2184,37 @@ public class SdlRouterService extends Service{
 			int offset = bundle.getInt(TransportConstants.BYTES_TO_SEND_EXTRA_OFFSET, 0); //If nothing, start at the beginning of the array
 			int count = bundle.getInt(TransportConstants.BYTES_TO_SEND_EXTRA_COUNT, packet.length);  //In case there isn't anything just send the whole packet.
 			TransportType transportType = TransportType.valueForString(bundle.getString(TransportConstants.TRANSPORT_TYPE));
-			switch ((transportType)){
-				case BLUETOOTH:
-					if(bluetoothTransport !=null && bluetoothTransport.getState() == MultiplexBluetoothTransport.STATE_CONNECTED) {
-						bluetoothTransport.write(packet, offset, count);
-						return true;
-					}
-				case USB:
-					if(usbTransport != null && usbTransport.getState() ==  MultiplexBaseTransport.STATE_CONNECTED) {
-						usbTransport.write(packet, offset, count);
-						return true;
-					}
-					// fall through
-					if (slipTransport != null && slipTransport.getState() == MultiplexBaseTransport.STATE_CONNECTED) {
-						Log.d(TAG, String.format("slipTransport about writing %d bytes", count));
-						slipTransport.write(packet, offset, count);
-						return true;
-					} else if (bluetoothTransport !=null && bluetoothTransport.getState() == MultiplexBluetoothTransport.STATE_CONNECTED) {
-                        bluetoothTransport.write(packet, offset, count);
-                        return true;
-                    }
-				case TCP:
-					if(tcpTransport != null && tcpTransport.getState() ==  MultiplexBaseTransport.STATE_CONNECTED) {
-						tcpTransport.write(packet, offset, count);
-						return true;
-					}
-				default:
-					if(sendThroughAltTransport(bundle)){
-						return true;
-					}
+			if (transportType != null) {
+				switch ((transportType)) {
+					case BLUETOOTH:
+						if (bluetoothTransport != null && bluetoothTransport.getState() == MultiplexBluetoothTransport.STATE_CONNECTED) {
+							bluetoothTransport.write(packet, offset, count);
+							return true;
+						}
+					case USB:
+						if (usbTransport != null && usbTransport.getState() == MultiplexBaseTransport.STATE_CONNECTED) {
+							usbTransport.write(packet, offset, count);
+							return true;
+						}
+						// fall through
+						if (slipTransport != null && slipTransport.getState() == MultiplexBaseTransport.STATE_CONNECTED) {
+							Log.d(TAG, String.format("slipTransport about writing %d bytes", count));
+							slipTransport.write(packet, offset, count);
+							return true;
+						} else if (bluetoothTransport != null && bluetoothTransport.getState() == MultiplexBluetoothTransport.STATE_CONNECTED) {
+							bluetoothTransport.write(packet, offset, count);
+							return true;
+						}
+					case TCP:
+						if (tcpTransport != null && tcpTransport.getState() == MultiplexBaseTransport.STATE_CONNECTED) {
+							tcpTransport.write(packet, offset, count);
+							return true;
+						}
+					default:
+						if (sendThroughAltTransport(bundle)) {
+							return true;
+						}
+				}
 			}
 			Log.e(TAG, "Can't send data, no transport  of specified type connected");
 			return false;
