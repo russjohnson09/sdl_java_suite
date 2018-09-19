@@ -527,8 +527,10 @@ public class SdlRouterService extends Service{
 											} else if(service.tcpTransport != null && service.tcpTransport.isConnected()){
 												transportType = TransportType.TCP;
 											}
-											//Log.d(TAG, "Transport type was null, so router set it to " + transportType.name());
-											receivedBundle.putString(TransportConstants.TRANSPORT_TYPE, transportType.name());
+											if (transportType != null) {
+												//Log.d(TAG, "Transport type was null, so router set it to " + transportType.name());
+												receivedBundle.putString(TransportConstants.TRANSPORT_TYPE, transportType.name());
+											}
 										}else{
 											// Let's override TransportType for slip router
 											if (service.slipTransport != null && service.slipTransport.isConnected()) {
