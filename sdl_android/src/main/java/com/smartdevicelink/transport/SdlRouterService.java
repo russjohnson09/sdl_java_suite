@@ -1733,6 +1733,7 @@ public class SdlRouterService extends Service{
 						notificationChannel.enableLights(false);
 						notificationChannel.enableVibration(false);
 						notificationManager.createNotificationChannel(notificationChannel);
+						builder.setChannelId(notificationChannel.getId());
 					} else {
 						Log.e(TAG, "Unable to retrieve notification Manager service");
 						if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
