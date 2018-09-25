@@ -39,8 +39,8 @@ public class RegisterAppInterfaceResponse extends RPCResponse {
     public static final String KEY_HMI_CAPABILITIES 			= "hmiCapabilities"; //As of v4.0
     public static final String KEY_SDL_VERSION 					= "sdlVersion"; //As of v4.0
     public static final String KEY_SYSTEM_SOFTWARE_VERSION		= "systemSoftwareVersion"; //As of v4.0
-	public static final String KEY_PCM_STREAM_CAPABILITIES      = "pcmStreamCapabilities";
-
+    public static final String KEY_ICON_RESUMED 				= "iconResumed";
+    public static final String KEY_PCM_STREAM_CAPABILITIES      = "pcmStreamCapabilities";
     
 	/**
 	 * Constructs a new RegisterAppInterfaceResponse object
@@ -77,6 +77,17 @@ public class RegisterAppInterfaceResponse extends RPCResponse {
 		setSuccess(success);
 		setResultCode(resultCode);
 	}
+
+	@Override
+	public void format(com.smartdevicelink.util.Version rpcVersion, boolean formatParams){
+		//Add in 5.0.0 of the rpc spec
+		if(getIconResumed() == null){
+			setIconResumed(Boolean.FALSE);
+		}
+
+		super.format(rpcVersion,formatParams);
+	}
+
     @SuppressWarnings("unchecked")
     public SdlMsgVersion getSdlMsgVersion() {
 		return (SdlMsgVersion) getObject(SdlMsgVersion.class, KEY_SDL_MSG_VERSION);
@@ -376,7 +387,26 @@ public class RegisterAppInterfaceResponse extends RPCResponse {
 		setParameters(KEY_SYSTEM_SOFTWARE_VERSION, systemSoftwareVersion);
     }
 
-    public String getSystemSoftwareVersion() {    
-    	 return getString(KEY_SYSTEM_SOFTWARE_VERSION);
+    public String getSystemSoftwareVersion() {
+        return getString(KEY_SYSTEM_SOFTWARE_VERSION);
     }
+
+	/**
+	 * Sets Icon Resumed Boolean
+	 * @param iconResumed - if param not included, set to false
+	 */
+	public void setIconResumed(Boolean iconResumed){
+		if(iconResumed == null){
+			iconResumed = false;
+		}
+		setParameters(KEY_ICON_RESUMED, iconResumed);
+	}
+
+	/**
+	 * Tells developer whether or not their app icon has been resumed on core.
+	 * @return boolean - true if icon was resumed, false if not
+	 */
+	public Boolean getIconResumed() {
+		return getBoolean(KEY_ICON_RESUMED);
+	}
 }

@@ -1,3 +1,35 @@
+/*
+ * Copyright (c) 2018 Livio, Inc.
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * Redistributions of source code must retain the above copyright notice, this
+ * list of conditions and the following disclaimer.
+ *
+ * Redistributions in binary form must reproduce the above copyright notice,
+ * this list of conditions and the following
+ * disclaimer in the documentation and/or other materials provided with the
+ * distribution.
+ *
+ * Neither the name of the Livio Inc. nor the names of its contributors
+ * may be used to endorse or promote products derived from this software
+ * without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
+ */
+
 package com.smartdevicelink.transport;
 
 import android.annotation.TargetApi;
@@ -32,10 +64,6 @@ public abstract class SdlBroadcastReceiver extends BroadcastReceiver{
 	
 	private static final String TAG = "Sdl Broadcast Receiver";
 
-	private static final String BOOT_COMPLETE = "android.intent.action.BOOT_COMPLETED";
-	private static final String ACL_CONNECTED = "android.bluetooth.device.action.ACL_CONNECTED";
-	private static final String STATE_CHANGED = "android.bluetooth.adapter.action.STATE_CHANGED" ;
-	
 	protected static final String SDL_ROUTER_SERVICE_CLASS_NAME 			= "sdlrouterservice";
 	
 	public static final String LOCAL_ROUTER_SERVICE_EXTRA					= "router_service";
@@ -69,9 +97,7 @@ public abstract class SdlBroadcastReceiver extends BroadcastReceiver{
 			return;
 		}
 		
-        if(!(action.equalsIgnoreCase(BOOT_COMPLETE)
-        		|| action.equalsIgnoreCase(ACL_CONNECTED)
-        		|| action.equalsIgnoreCase(STATE_CHANGED)
+        if(!(action.equalsIgnoreCase(BluetoothDevice.ACTION_ACL_CONNECTED)
         		|| action.equalsIgnoreCase(USBTransport.ACTION_USB_ACCESSORY_ATTACHED)
         		|| action.equalsIgnoreCase(TransportConstants.START_ROUTER_SERVICE_ACTION))){
         	//We don't want anything else here if the child class called super and has different intent filters
@@ -155,20 +181,8 @@ public abstract class SdlBroadcastReceiver extends BroadcastReceiver{
 				didStart = wakeUpRouterService(context, false,altServiceWake,device );
 				
 			}
-
 		}
-		
-	    if (action.contains("android.bluetooth.adapter.action.STATE_CHANGED")){
-	    	int state = intent.getIntExtra("android.bluetooth.adapter.extra.STATE",-1);
-	    		if (state == BluetoothAdapter.STATE_OFF || 
-	    			state == BluetoothAdapter.STATE_TURNING_OFF){
-	    			//onProtocolDisabled(context);
-	    			//Let's let the service that is running manage what to do for this
-	    			//If we were to do it here, for every instance of this BR it would send
-	    			//an intent to stop service, where it's only one that is needed.
-	    			return;
-	    		}
-	    }
+
 
 	    Log.d(TAG, "Check for local router");
 	    if(localRouterClass!=null){ //If there is a supplied router service lets run some logic regarding starting one
@@ -312,7 +326,12 @@ public abstract class SdlBroadcastReceiver extends BroadcastReceiver{
 			Intent intent = new Intent();
 			intent.setClassName(packageName, className);
 			intent.putExtra(TransportConstants.PING_ROUTER_SERVICE_EXTRA, true);
-			context.startService(intent);
+			if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.O){
+				intent.putExtra(FOREGROUND_EXTRA, true);
+				context.startForegroundService(intent);
+			}else {
+				context.startService(intent);
+			}
 		}catch(SecurityException e){
 			Log.e(TAG, "Security exception, process is bad");
 			// This service could not be started
