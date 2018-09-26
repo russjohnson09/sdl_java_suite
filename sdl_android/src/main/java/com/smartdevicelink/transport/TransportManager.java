@@ -221,7 +221,7 @@ public class TransportManager {
 
     public void requestNewSession(TransportRecord transportRecord){
         if(transport != null){
-            transport.requestNewSession(transportRecord, false);
+            transport.requestNewSession(transportRecord);
         }else if(legacyBluetoothTransport != null){
             Log.w(TAG, "Session requested for non-bluetooth transport while in legacy mode");
         }
