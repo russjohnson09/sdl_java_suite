@@ -2056,10 +2056,11 @@ public class SdlRouterService extends Service{
 
 		stopClientPings();
 
-
-		PacketWriteTaskMaster packetWriteTaskMaster = packetWriteTaskMasterMap.remove(record.getType());
-		if(packetWriteTaskMaster!=null){
-			packetWriteTaskMaster.close();
+		if (packetWriteTaskMasterMap != null) {
+			PacketWriteTaskMaster packetWriteTaskMaster = packetWriteTaskMasterMap.remove(record.getType());
+			if (packetWriteTaskMaster != null) {
+				packetWriteTaskMaster.close();
+			}
 		}
 
 		//We've notified our clients, less clean up the mess now.
