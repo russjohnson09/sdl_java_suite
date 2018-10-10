@@ -106,6 +106,7 @@ import com.smartdevicelink.protocol.BinaryFrameHeader;
 import com.smartdevicelink.protocol.ProtocolMessage;
 import com.smartdevicelink.protocol.SdlPacket;
 import com.smartdevicelink.protocol.SdlPacketFactory;
+import com.smartdevicelink.protocol.SdlProtocol;
 import com.smartdevicelink.protocol.enums.ControlFrameTags;
 import com.smartdevicelink.protocol.enums.FrameType;
 import com.smartdevicelink.protocol.enums.FunctionID;
@@ -3474,7 +3475,7 @@ public class SdlRouterService extends Service{
 				receivedBundle.putString(TransportConstants.TRANSPORT_TYPE, transportType.name());
 			}
 
-			Log.d(TAG, String.format("about handleMessage(flag=%d) for %s", flags, transportType.name()));
+			//Log.d(TAG, String.format("about handleMessage(flag=%d) for %s", flags, transportType.name()));
 			if(flags!=TransportConstants.BYTES_TO_SEND_FLAG_NONE){
 				byte[] packet = receivedBundle.getByteArray(TransportConstants.BYTES_TO_SEND_EXTRA_NAME); 
 				if(flags == TransportConstants.BYTES_TO_SEND_FLAG_LARGE_PACKET_START){
@@ -3620,6 +3621,18 @@ public class SdlRouterService extends Service{
 								if(messenger.getBinder()!=null){
 									messenger.getBinder().unlinkToDeath(this, 0);
 								}
+								// Here's the place where we should endservice...
+								if (registeredTransports.size() > 0) {
+									for (Long sessionId: sessionIds) {
+										ArrayList<TransportType> transportTypes = registeredTransports.get(sessionId.intValue());
+										TransportType transportType = (transportTypes != null)? transportTypes.get(0) : TransportType.USB;
+										SdlPacket endService = SdlPacketFactory.createEndSession(SessionType.RPC, (byte)sessionId.intValue(), 0, (byte)5, new byte[0]); // @review: assuming MajorVersion is 5.
+										byte[] endServicePacket = endService.constructPacket();
+										Log.w(TAG, "about sending endService (session=" + sessionId + "; transport=" + transportType.name() + " due to binder death");
+										manuallyWriteBytes(transportType, endServicePacket,0, endServicePacket.length);
+									}
+								}
+
 								removeAllSessionsForApp(RegisteredApp.this,true);
 								removeAppFromMap(RegisteredApp.this);
 								startClientPings();
