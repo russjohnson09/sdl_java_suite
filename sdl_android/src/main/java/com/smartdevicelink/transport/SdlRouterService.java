@@ -2210,9 +2210,11 @@ public class SdlRouterService extends Service{
 							Log.d(TAG, String.format("slipTransport about writing %d bytes", count));
 							slipTransport.write(packet, offset, count);
 							return true;
+							/*-- let's do not fall back to BT ---
 						} else if (bluetoothTransport != null && bluetoothTransport.getState() == MultiplexBluetoothTransport.STATE_CONNECTED) {
+							Log.d(TAG, "writeBytesToTransport Fallback to BT transport");
 							bluetoothTransport.write(packet, offset, count);
-							return true;
+							return true;---*/
 						}
 					case TCP:
 						if (tcpTransport != null && tcpTransport.getState() == MultiplexBaseTransport.STATE_CONNECTED) {
@@ -2246,9 +2248,11 @@ public class SdlRouterService extends Service{
 						Log.d(TAG, String.format("slipTransport about writing %d bytes", count));
 						slipTransport.write(packet, offset, count);
 						return true;
+						/*---
 					} else if (bluetoothTransport !=null && bluetoothTransport.getState() == MultiplexBluetoothTransport.STATE_CONNECTED) {
+						Log.d(TAG, "manuallyWriteBytes Fallback to BT transport");
 						bluetoothTransport.write(packet, offset, count);
-						return true;
+						return true; --*/
 					}
 				case TCP:
 					if(tcpTransport != null && tcpTransport.getState() ==  MultiplexBaseTransport.STATE_CONNECTED) {
@@ -3270,6 +3274,7 @@ public class SdlRouterService extends Service{
 		 * Closes this app properly. 
 		 */
 		public void close(){
+			Log.d("RegisterdApps", "close got called");
 			clearDeathNote();
 			clearBuffer();
 			Collection<PacketWriteTaskBlockingQueue>  queueCollection = queues.values();
@@ -3321,8 +3326,10 @@ public class SdlRouterService extends Service{
 			if(location>=0){
 				Long removedSessionId = sessionIds.remove(location);
 				registeredTransports.remove(sessionId.intValue());
+				Log.d("RegisteredApps", "appId=" + appId + "; registeredTransports.remove(sessionId=" + sessionId);
 				return removedSessionId != null;
 			}else{
+				Log.d("RegisteredApps", "appId=" + appId + "; sessionId=" + sessionId + " cannot find");
 				return false;
 			}
 		}
@@ -3338,6 +3345,7 @@ public class SdlRouterService extends Service{
 			this.sessionIds.set(position, sessionId);
 			synchronized (TRANSPORT_LOCK){
 				this.registeredTransports.put((int)sessionId, new ArrayList<TransportType>());
+				Log.d("RegisteredApps", "appId=" + appId + "; registeredTransports.put(sessionId=" + sessionId);
 			}
 		}
 		
@@ -3359,6 +3367,7 @@ public class SdlRouterService extends Service{
 					}
 					transportTypes.add(transportType);
 					this.registeredTransports.put(sessionId,transportTypes);
+					Log.d("RegisteredApps", "appId=" + appId + "; registeredTransports.put(sessionId=" + sessionId + ", TransportTypes=" + transportTypes);
 				}
 
 			}
