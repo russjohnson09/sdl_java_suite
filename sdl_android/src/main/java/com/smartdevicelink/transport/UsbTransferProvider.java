@@ -122,15 +122,15 @@ public class UsbTransferProvider {
     }
 
     @SuppressLint("NewApi")
-    private ParcelFileDescriptor getFileDescriptor(UsbAccessory accessory){
-        UsbManager manager = (UsbManager) context.getSystemService(Context.USB_SERVICE);
+    private ParcelFileDescriptor getFileDescriptor(UsbAccessory accessory) {
         try {
-            if(manager != null){
+            UsbManager manager = (UsbManager) context.getSystemService(Context.USB_SERVICE);
+
+            if (manager != null) {
                 return manager.openAccessory(accessory);
             }
-        } catch (IllegalArgumentException e) {
-            e.printStackTrace();
-        }
+        }catch (Exception e){}
+
         return  null;
     }
 

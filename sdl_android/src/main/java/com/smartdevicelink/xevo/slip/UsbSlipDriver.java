@@ -14,6 +14,7 @@ import android.os.BatteryManager;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.ParcelFileDescriptor;
+import android.util.Log;
 
 import org.xmlpull.v1.XmlPullParser;
 import java.io.IOException;
@@ -33,6 +34,7 @@ import com.smartdevicelink.xevo.util.PingSender;
  * @hide
  */
 public class UsbSlipDriver implements ISlipDriver {
+    private static final String TAG = "UsbSlipDriver";
     /**
      * Broadcast action: Sent when an user has granted access to the USB accessory.
      *
@@ -366,7 +368,7 @@ public class UsbSlipDriver implements ISlipDriver {
 
             // Notification from TCAPP/LCAPP
             if (ACTION_CAPP_FOREGROUND_NOTIFICATION.equals(action)) {
-                DebugTool.logInfo("Detect CAPP foreground event");
+                Log.d(TAG,"Detect CAPP foreground event");
                 retryPermissionDialogIfNecessary();
             }
         }
@@ -1133,6 +1135,7 @@ public class UsbSlipDriver implements ISlipDriver {
     private synchronized void retryPermissionDialogIfNecessary() {
         mActivitySwitchedTimeNsec = System.nanoTime();
 
+        Log.d(TAG, "retryPermissionDialogIfNecessary: state=" + mState.name() + "; PermissionRequestedAccessory=" + mPermissionRequestedAccessory);
         if ((mState == State.WAITING_PERMISSION || mState == State.CONNECTING) && mPermissionRequestedAccessory != null) {
             // workaround A
             if (mPermissionRequestedTimeNsec >= 0 &&
