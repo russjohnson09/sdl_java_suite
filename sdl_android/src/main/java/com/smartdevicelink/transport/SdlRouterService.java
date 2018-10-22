@@ -240,8 +240,11 @@ public class SdlRouterService extends Service{
 	Intent pingIntent = null;
 	private boolean isPingingClients = false;
 	int pingCount = 0;
+	private boolean mShowBadge = true; // show badge by default.
 
-	
+	public void setShowBadge(boolean showBadge) {
+		mShowBadge = showBadge;
+	}
 	/* **************************************************************************************************************************************
 	****************************************************************************************************************************************
 	***********************************************  Broadcast Receivers START  **************************************************************
@@ -1761,8 +1764,10 @@ public class SdlRouterService extends Service{
 						NotificationChannel notificationChannel = new NotificationChannel(SDL_NOTIFICATION_CHANNEL_ID, SDL_NOTIFICATION_CHANNEL_NAME, NotificationManager.IMPORTANCE_LOW);
 						notificationChannel.enableLights(false);
 						notificationChannel.enableVibration(false);
+						notificationChannel.setShowBadge(mShowBadge);
 						notificationManager.createNotificationChannel(notificationChannel);
 						builder.setChannelId(notificationChannel.getId());
+						Log.d(TAG, "enterForeground: showBadge=" + mShowBadge);
 					} else {
 						Log.e(TAG, "Unable to retrieve notification Manager service");
 						if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
