@@ -90,6 +90,7 @@ import com.smartdevicelink.trace.enums.InterfaceActivityDirection;
 import com.smartdevicelink.transport.BaseTransportConfig;
 import com.smartdevicelink.transport.MultiplexTransportConfig;
 import com.smartdevicelink.transport.SiphonServer;
+import com.smartdevicelink.transport.USBTransportConfig;
 import com.smartdevicelink.transport.enums.TransportType;
 import com.smartdevicelink.util.CorrelationIdGenerator;
 import com.smartdevicelink.util.DebugTool;
@@ -111,6 +112,8 @@ import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.ProtocolException;
 import java.net.URL;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Hashtable;
 import java.util.List;
 import java.util.Vector;
@@ -1471,6 +1474,24 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 		_systemCapabilityManager = new SystemCapabilityManager(_internalInterface);
 		// Setup SdlConnection
 		synchronized(CONNECTION_REFERENCE_LOCK) {
+
+			//Handle legacy USB connections
+			if(_transportConfig != null
+					&& TransportType.USB.equals(_transportConfig.getTransportType())){
+				//A USB transport config was provided
+				USBTransportConfig usbTransportConfig = (USBTransportConfig)_transportConfig;
+				if(usbTransportConfig.getUsbAccessory() == null){
+					DebugTool.logInfo("Legacy USB transport config was used, but received null for accessory. Attempting to connect with router service");
+					//The accessory was null which means it came from a router service
+					MultiplexTransportConfig multiplexTransportConfig = new MultiplexTransportConfig(usbTransportConfig.getUSBContext(),_appID);
+					multiplexTransportConfig.setRequiresHighBandwidth(true);
+					multiplexTransportConfig.setSecurityLevel(MultiplexTransportConfig.FLAG_MULTI_SECURITY_OFF);
+					multiplexTransportConfig.setPrimaryTransports(Collections.singletonList(TransportType.USB));
+					multiplexTransportConfig.setSecondaryTransports(new ArrayList<TransportType>());
+					_transportConfig = multiplexTransportConfig;
+				}
+			}
+
 			if(_transportConfig.getTransportType().equals(TransportType.MULTIPLEX)){
 				this.sdlSession = new SdlSession2(_interfaceBroker,(MultiplexTransportConfig)_transportConfig);
 			}else{
@@ -7472,13 +7493,18 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 						ImageResolution resolution = null;
 						if(protocolVersion!= null && protocolVersion.getMajor()>=5){ //At this point we should already have the capability
 							VideoStreamingCapability capability = (VideoStreamingCapability)_systemCapabilityManager.getCapability(SystemCapabilityType.VIDEO_STREAMING);
-							resolution = capability.getPreferredResolution();
-						}else {
-							DisplayCapabilities dispCap = (DisplayCapabilities) _systemCapabilityManager.getCapability(SystemCapabilityType.DISPLAY);
-							if (dispCap != null) {
-								 resolution = (dispCap.getScreenParams().getImageResolution());
+							if (capability != null) {
+								resolution = capability.getPreferredResolution();
 							}
 						}
+
+						if(resolution == null){ //Either the protocol version is too low to access video streaming caps, or they were null
+							DisplayCapabilities dispCap = (DisplayCapabilities) internalInterface.getCapability(SystemCapabilityType.DISPLAY);
+							if (dispCap != null) {
+								resolution = (dispCap.getScreenParams().getImageResolution());
+							}
+						}
+
 						if(resolution != null){
 							DisplayMetrics displayMetrics = new DisplayMetrics();
 							disp.getMetrics(displayMetrics);
