@@ -24,7 +24,8 @@ final class MultiplexBluetoothTransportUUID {
                 SERVER_UUID = new UUID(0x20AD4E0C71484C0BL, 0xB69A33542D731192L);
                 break;
             case "australia":
-                SERVER_UUID = new UUID(0xC84E79CCC1D8444FL, 0x9F5278E5858D051AL);
+                //Toyota: 79c118fa-6882-11e8-adc0-fa7ae01bbebc
+                SERVER_UUID = new UUID(0x79C118FAL688211E8, 0xABC0FA7AE01BBEBCL);
                 break;
             case "china":
                 SERVER_UUID = new UUID(0xBEB5A53BF5974ACBL, 0x9CAEC3193489A109L);
