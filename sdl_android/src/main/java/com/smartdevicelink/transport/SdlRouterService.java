@@ -438,6 +438,8 @@ public class SdlRouterService extends Service{
 	                		}
 	                	}
 	                	service.onAppRegistered(app);
+	                	// when we get registered apps, make sure we have the connected transports.
+	                	service.ensureTranportIsconnected();
 
 	            		returnBundle = new Bundle();
 	            		//Add params if connected
@@ -1503,7 +1505,11 @@ public class SdlRouterService extends Service{
 		if(!connectAsClient){
 			if(bluetoothAvailable()){
 				initBluetoothSerialService();
+			} else {
+				Log.d(TAG, "startupSequence: bluetooth not available");
 			}
+		} else {
+			Log.d(TAG, "startUpSequence; connectAsClient");
 		}
 		
 		if(altTransportTimerHandler!=null){
@@ -1556,6 +1562,7 @@ public class SdlRouterService extends Service{
 		if(!shouldServiceRemainOpen(intent)){
 			closeSelf();
 		}
+
 		return super.onStartCommand(intent, flags, startId);
 	}
 
@@ -1913,9 +1920,12 @@ public class SdlRouterService extends Service{
 	public boolean shouldServiceRemainOpen(Intent intent){
 		ArrayList<TransportRecord> connectedTransports = getConnectedTransports();
 
-		if(connectedTransports != null && !connectedTransports.isEmpty()){ // stay open if we have any transports connected
+		if(connectedTransports != null && !connectedTransports.isEmpty()) { // stay open if we have any transports connected
 			Log.d(TAG, "1 or more transports connected, remaining open");
 			return true;
+		}else if (intent != null && TransportConstants.CONNECTED_TRANSPORT_EXISTS.equals(intent.getAction())) {
+			Log.e(TAG, "shouldServiceRemainOpen returns fail, because there is no connected transport");
+			return false; // CONNECTED_TRANSPORT_EXISTS check fails.
 		}else if(altTransportService!=null || altTransportTimerHandler !=null){
 			//We have been started by an alt transport, we must remain open. "My life for Auir...."
 			Log.d(TAG, "Alt Transport connected, remaining open");
@@ -2159,6 +2169,20 @@ public class SdlRouterService extends Service{
 		}
 	}
 
+	private void ensureTranportIsconnected() {
+		Log.d(TAG, "ensureTransportIsConnected");
+		// make sure we have connected transport after 3 seconds.
+		final int connectedTransportTimeout = 3 * 1000;
+		Handler timeoutHandler = new Handler(Looper.getMainLooper());
+		timeoutHandler.postDelayed(new Runnable() {
+			@Override
+			public void run() {
+				if (!shouldServiceRemainOpen(new Intent(TransportConstants.CONNECTED_TRANSPORT_EXISTS))) {
+					closeSelf();
+				}
+			}
+		}, connectedTransportTimeout);
+	}
 	/**
 	 * Handler for all Multiplex Based transports.
 	 * It will ensure messages are properly queued back to the router service.
@@ -2240,7 +2264,7 @@ public class SdlRouterService extends Service{
 						}
 						// fall through
 						if (slipTransport != null && slipTransport.getState() == MultiplexBaseTransport.STATE_CONNECTED) {
-							Log.d(TAG, String.format("slipTransport about writing %d bytes", count));
+							//Log.d(TAG, String.format("slipTransport about writing %d bytes", count));
 							slipTransport.write(packet, offset, count);
 							return true;
 							/*-- let's do not fall back to BT ---
@@ -3665,6 +3689,9 @@ public class SdlRouterService extends Service{
 								}
 								// Here's the place where we should endservice...
 								if (registeredTransports.size() > 0) {
+									if (sessionIds.isEmpty()) {
+										Log.e(TAG, "anyhow sessionIds is empty; cannot cleanup");
+									}
 									for (Long sessionId: sessionIds) {
 										ArrayList<TransportType> transportTypes = registeredTransports.get(sessionId.intValue());
 										TransportType transportType = (transportTypes != null)? transportTypes.get(0) : TransportType.USB;
@@ -3673,6 +3700,8 @@ public class SdlRouterService extends Service{
 										Log.w(TAG, "about sending endService (session=" + sessionId + "; transport=" + transportType.name() + " due to binder death");
 										manuallyWriteBytes(transportType, endServicePacket,0, endServicePacket.length);
 									}
+								} else {
+									Log.e(TAG, "Binder died, but there's no registeredTransports");
 								}
 
 								removeAllSessionsForApp(RegisteredApp.this,true);

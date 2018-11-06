@@ -201,7 +201,7 @@ public class XevoMultiplexSlipTransport extends MultiplexBaseTransport {
 				mSocket.send(out, offset, count);
 			}
 
-			Log.d(TAG, String.format("%d bytes successfully sent", count));
+			//Log.d(TAG, String.format("%d bytes successfully sent", count));
 		} catch (IOException e) {
 			e.printStackTrace();
 			// unexpected error. disconnect

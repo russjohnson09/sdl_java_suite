@@ -72,6 +72,7 @@ public class TransportConstants {
 	public static final String XMA_PROVIDER_ACTION                              = "sdl.router.xmaprovider";
 
 	public static final String REQUIRES_HIGH_BANDWIDTH                          = "sdl.router.requires_high_bandwidth";
+	public static final String CONNECTED_TRANSPORT_EXISTS						= "sdl.router.connected_transport_exists";
 
 
 	/**
