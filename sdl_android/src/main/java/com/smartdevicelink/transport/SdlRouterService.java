@@ -2762,13 +2762,15 @@ public class SdlRouterService extends Service{
 						bluetoothSessionMap.remove(sessionId);
 						retVal = true;
 					}
+				} else if (transportTypes.contains(TransportType.USB) && slipSessionMap != null) {
+					if (slipSessionMap.indexOfKey(sessionId) >= 0) {
+						Log.e(TAG, "about removing from slipSessionMap: session= " + sessionId );
+						slipSessionMap.remove(sessionId);
+						retVal = true;
+					}
 				} else if (transportTypes.contains(TransportType.USB) && usbSessionMap != null) {
 					if (usbSessionMap.indexOfKey(sessionId) >= 0) {
 						usbSessionMap.remove(sessionId);
-						retVal = true;
-					} else if (slipSessionMap.indexOfKey(sessionId) >= 0) {
-						Log.e(TAG, "about removing from slipSessionMap: session= " + sessionId );
-						slipSessionMap.remove(sessionId);
 						retVal = true;
 					}
 				} else if (transportTypes.contains(TransportType.TCP) && tcpSessionMap != null) {
@@ -2887,6 +2889,7 @@ public class SdlRouterService extends Service{
 									app.getAwaitingSession().remove(transportType);
 									appId = app.getAppId();
 									sessionMap.put(sessionId, appId);
+									//Log.d(TAG, "sessionMap put(" + sessionId + ", " + appId + ")");
 									break;
 								}
 							}
@@ -2938,6 +2941,7 @@ public class SdlRouterService extends Service{
 								//session map associated with this transport
 								app.registerTransport(sessionId, transportType);
 								sessionMap.put(sessionId,appId);
+								//Log.d(TAG, "sessionMap put(" + sessionId + ", " + appId + ") for newTransport");
 							}else{
 								Log.w(TAG, "No registered app found when register secondary transport");
 							}
