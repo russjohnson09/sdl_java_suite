@@ -2178,7 +2178,9 @@ public class SdlRouterService extends Service{
 			@Override
 			public void run() {
 				if (!shouldServiceRemainOpen(new Intent(TransportConstants.CONNECTED_TRANSPORT_EXISTS))) {
-					closeSelf();
+					//closeSelf();
+					// Try not closing for now
+					Log.e(TAG, "We are not connected with HU at all; @REVIEW: need to stop the service??");
 				}
 			}
 		}, connectedTransportTimeout);
