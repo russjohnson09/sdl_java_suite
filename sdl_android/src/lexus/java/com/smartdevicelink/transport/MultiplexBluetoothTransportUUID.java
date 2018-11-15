@@ -25,7 +25,7 @@ final class MultiplexBluetoothTransportUUID {
                 break;
             case "australia":
                 //Lexus: 8c47102e-6882-11e8-adc0-fa7ae01bbebc
-                SERVER_UUID = new UUID(0x8C47102E688211E8L, 0xABC0FA7AE01BBEBCL);
+                SERVER_UUID = new UUID(0x8C47102E688211E8L, 0xADC0FA7AE01BBEBCL);
                 break;
             case "china":
                 SERVER_UUID = new UUID(0xE83168AADCF14278L, 0xAD083308892C52C4L);
