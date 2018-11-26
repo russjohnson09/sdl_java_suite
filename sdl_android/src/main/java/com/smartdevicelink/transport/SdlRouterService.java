@@ -146,7 +146,7 @@ public class SdlRouterService extends Service{
 	/**
 	 * <b> NOTE: DO NOT MODIFY THIS UNLESS YOU KNOW WHAT YOU'RE DOING.</b>
 	 */
-	protected static final int ROUTER_SERVICE_VERSION_NUMBER = 7;
+	protected static final int ROUTER_SERVICE_VERSION_NUMBER = 8;
 
 	
 	private static final String ROUTER_SERVICE_PROCESS = "com.smartdevicelink.router";
@@ -2029,6 +2029,21 @@ public class SdlRouterService extends Service{
     		//If we have clients
 			notifyClients(createHardwareConnectedMessage(record));
     	}
+    	if (type.equals(TransportType.BLUETOOTH) && slipTransport == null) {
+    		// make sure restart slip transport.
+			Handler mainHandler = new Handler(getMainLooper());
+			mainHandler.postDelayed(new Runnable() {
+				@Override
+				public void run() {
+					if (slipTransport == null) {
+						slipTransport = new XevoMultiplexSlipTransport(slipHandler, TransportType.USB);
+						slipTransport.setContext(SdlRouterService.this);
+						slipTransport.start();
+					}
+
+				}
+			}, 100);
+		}
 	}
 	
 	private Message createHardwareConnectedMessage(final TransportRecord record){
@@ -2073,9 +2088,15 @@ public class SdlRouterService extends Service{
 			message.setData(bundle);
 			notifyClients(message);
 		}
+		if (slipTransport != null && record.getType().equals(TransportType.USB)) {
+			slipTransport.stop();
+			slipTransport = null;
+			// we have to re-initialize slipTransport anyway. -- move to onTransportConnected
+		}
 		if(!getConnectedTransports().isEmpty()){
 			ArrayList<TransportRecord> transports = getConnectedTransports();
 			// Updates notification to one of still connected transport
+			Log.d(TAG, "about enterForeground; still have connection:" + transports);
 			enterForeground("Connected to " + transports.get(transports.size() - 1),0,true);
 			return;
 		}else{
@@ -2269,6 +2290,8 @@ public class SdlRouterService extends Service{
 							//Log.d(TAG, String.format("slipTransport about writing %d bytes", count));
 							slipTransport.write(packet, offset, count);
 							return true;
+						} else if (slipTransport != null) {
+							Log.d(TAG, "slipTransport.state=" + slipTransport.getState());
 							/*-- let's do not fall back to BT ---
 						} else if (bluetoothTransport != null && bluetoothTransport.getState() == MultiplexBluetoothTransport.STATE_CONNECTED) {
 							Log.d(TAG, "writeBytesToTransport Fallback to BT transport");
@@ -2286,7 +2309,7 @@ public class SdlRouterService extends Service{
 						}
 				}
 			}
-			Log.e(TAG, "Can't send data, no transport  of specified type connected");
+			Log.e(TAG, "Can't send data, no transport  of specified type connected: type=" + transportType);
 			return false;
 		}
 		

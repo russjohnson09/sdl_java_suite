@@ -81,6 +81,7 @@ public class XevoMultiplexSlipTransport extends MultiplexBaseTransport {
 	} --*/
 
 	public synchronized void start() {
+		Log.d(TAG, "about starting XevoMultiplexSlipTransport");
 		if (mState != STATE_CONNECTED) {
 			setState(STATE_LISTEN);
 		}
@@ -91,6 +92,7 @@ public class XevoMultiplexSlipTransport extends MultiplexBaseTransport {
 	}
 
 	public synchronized void stop(int state) {
+		Log.d(TAG, "about stopping XevoMultiplexSlipTransport");
 		disconnect("stopping Slip Transport", null, true);
 		if (mState != state) {
 			setState(state);
@@ -180,7 +182,7 @@ public class XevoMultiplexSlipTransport extends MultiplexBaseTransport {
 						//DebugTool.logInfo("Bytes successfully sent");
 					} catch (IOException e) {
 						//final String msg = "Failed to send bytes over USB";
-						//DebugTool.logWarning(msg, e);
+						//DebugTool.logError(msg, e);
 						e.printStackTrace();
 						// unexpected error. disconnect
 						disconnect(e.getMessage(), e, true);
@@ -235,6 +237,7 @@ public class XevoMultiplexSlipTransport extends MultiplexBaseTransport {
 				do {
 					try {
 						if (mSocket != null) {
+							Log.d(TAG, "mSocket.close");
 							mSocket.close();
 							mSocket = null;
 						}
@@ -327,14 +330,15 @@ public class XevoMultiplexSlipTransport extends MultiplexBaseTransport {
 			}
 
 			if(mSocket != null){
+				Log.d(TAG, "mSocket.close");
 				int err = mSocket.close();
 				if (err != 0) {
-					DebugTool.logError(String.format("NetconnSocket close: err=%d", err));
+					DebugTool.logError(String.format("NetconnSocket close: err=%d", err) + "; message=" + message);
 				}
 			}
 			mSocket = null;
 			mReaderThread = null;
-			setState(STATE_LISTEN);
+			setState(STATE_NONE); // this fires onTransportDisconnected
 		} catch (IOException e) {
 			Log.e(TAG, "XevoSlipTransport.disconnect: Exception during disconnect: " + e.getMessage());
 		} catch (Throwable tr) {
