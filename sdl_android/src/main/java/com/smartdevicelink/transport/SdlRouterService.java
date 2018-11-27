@@ -2031,18 +2031,7 @@ public class SdlRouterService extends Service{
     	}
     	if (type.equals(TransportType.BLUETOOTH) && slipTransport == null) {
     		// make sure restart slip transport.
-			Handler mainHandler = new Handler(getMainLooper());
-			mainHandler.postDelayed(new Runnable() {
-				@Override
-				public void run() {
-					if (slipTransport == null) {
-						slipTransport = new XevoMultiplexSlipTransport(slipHandler, TransportType.USB);
-						slipTransport.setContext(SdlRouterService.this);
-						slipTransport.start();
-					}
-
-				}
-			}, 100);
+			restartSlipTransport(100);
 		}
 	}
 	
@@ -2091,7 +2080,8 @@ public class SdlRouterService extends Service{
 		if (slipTransport != null && record.getType().equals(TransportType.USB)) {
 			slipTransport.stop();
 			slipTransport = null;
-			// we have to re-initialize slipTransport anyway. -- move to onTransportConnected
+			// we have to re-initialize slipTransport anyway
+			restartSlipTransport(7000); // this needs some delay
 		}
 		if(!getConnectedTransports().isEmpty()){
 			ArrayList<TransportRecord> transports = getConnectedTransports();
@@ -2169,6 +2159,24 @@ public class SdlRouterService extends Service{
         }
 
     }
+
+    private void restartSlipTransport(int delay) {
+		if (slipTransport == null) {
+			// make sure restart slip transport.
+			Handler mainHandler = new Handler(getMainLooper());
+			mainHandler.postDelayed(new Runnable() {
+				@Override
+				public void run() {
+					if (slipTransport == null) {
+						slipTransport = new XevoMultiplexSlipTransport(slipHandler, TransportType.USB);
+						slipTransport.setContext(SdlRouterService.this);
+						slipTransport.start();
+					}
+
+				}
+			}, delay);
+		}
+	}
 
 	public void onPacketRead(SdlPacket packet){
         try {
