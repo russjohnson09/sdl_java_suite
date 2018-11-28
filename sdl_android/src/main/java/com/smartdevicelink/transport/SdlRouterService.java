@@ -216,6 +216,7 @@ public class SdlRouterService extends Service{
 	private SparseIntArray sessionHashIdMap;
 	private SparseIntArray cleanedSessionMap;
 	private final Object SESSION_LOCK = new Object(), REGISTERED_APPS_LOCK = new Object(), PING_COUNT_LOCK = new Object(), NOTIFICATION_LOCK = new Object();
+	private final Object SLIP_TRANSPORT_LOCK = new Object();
 	
 	private static Messenger altTransportService = null;
 	
@@ -1443,10 +1444,12 @@ public class SdlRouterService extends Service{
 		});
 		UsbSlipDriver.getInstance().start();
 
-		if (slipTransport == null) {
-			slipTransport = new XevoMultiplexSlipTransport(slipHandler, TransportType.USB);
-			slipTransport.setContext(this);
-			slipTransport.start();
+		synchronized (SLIP_TRANSPORT_LOCK) {
+			if (slipTransport == null) {
+				slipTransport = new XevoMultiplexSlipTransport(slipHandler, TransportType.USB);
+				slipTransport.setContext(this);
+				slipTransport.start();
+			}
 		}
 		startUpSequence();
 	}
@@ -2078,8 +2081,10 @@ public class SdlRouterService extends Service{
 			notifyClients(message);
 		}
 		if (slipTransport != null && record.getType().equals(TransportType.USB)) {
-			slipTransport.stop();
-			slipTransport = null;
+			synchronized (SLIP_TRANSPORT_LOCK) {
+				slipTransport.stop();
+				slipTransport = null;
+			}
 			// we have to re-initialize slipTransport anyway
 			restartSlipTransport(7000); // this needs some delay
 		}
@@ -2167,12 +2172,13 @@ public class SdlRouterService extends Service{
 			mainHandler.postDelayed(new Runnable() {
 				@Override
 				public void run() {
-					if (slipTransport == null) {
-						slipTransport = new XevoMultiplexSlipTransport(slipHandler, TransportType.USB);
-						slipTransport.setContext(SdlRouterService.this);
-						slipTransport.start();
+					synchronized (SLIP_TRANSPORT_LOCK) {
+						if (slipTransport == null) {
+							slipTransport = new XevoMultiplexSlipTransport(slipHandler, TransportType.USB);
+							slipTransport.setContext(SdlRouterService.this);
+							slipTransport.start();
+						}
 					}
-
 				}
 			}, delay);
 		}
@@ -2299,7 +2305,8 @@ public class SdlRouterService extends Service{
 							slipTransport.write(packet, offset, count);
 							return true;
 						} else if (slipTransport != null) {
-							Log.d(TAG, "slipTransport.state=" + slipTransport.getState());
+							break; // shouldn't go through other transport.
+							//Log.d(TAG, "slipTransport.state=" + slipTransport.getState());
 							/*-- let's do not fall back to BT ---
 						} else if (bluetoothTransport != null && bluetoothTransport.getState() == MultiplexBluetoothTransport.STATE_CONNECTED) {
 							Log.d(TAG, "writeBytesToTransport Fallback to BT transport");
