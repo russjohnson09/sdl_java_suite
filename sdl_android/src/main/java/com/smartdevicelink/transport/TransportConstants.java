@@ -74,6 +74,8 @@ public class TransportConstants {
 	public static final String REQUIRES_HIGH_BANDWIDTH                          = "sdl.router.requires_high_bandwidth";
 	public static final String CONNECTED_TRANSPORT_EXISTS						= "sdl.router.connected_transport_exists";
 
+	// lifecycle helper messenger
+	public static final String LIFECYCLE_HELPER_ACTION                          = "sdl.router.lifecycle.helper";
 
 	/**
 	 * This class houses all important router service versions
@@ -301,4 +303,9 @@ public class TransportConstants {
 	public static final String XMA_DATAGRAM_OFFSET_KEY = "datagram.offset";
 	public static final String XMA_DATAGRAM_LENGTH_KEY = "datagram.length";
 
+	/**
+	 * LIFECYCLE HELPER Message (used for CAPP)
+	 */
+	public static final int ENFORCE_START_SLIP_TRANSPORT                    = 0x87;
+	public static final int ENFORCE_CLOSE_SELF                              = 0x88;
 }

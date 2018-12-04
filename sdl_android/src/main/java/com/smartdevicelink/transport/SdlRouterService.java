@@ -904,6 +904,94 @@ public class SdlRouterService extends Service{
 	        }
 	    }
 
+	    final Messenger lifeCycleHelperMessenger = new Messenger(new LifecycleHelperHandler(this));
+	    final RegisteredAppsMonitor mRegisteredAppMonitor = new RegisteredAppsMonitor();
+
+		static class LifecycleHelperHandler extends Handler {
+			WeakReference<SdlRouterService> _service;
+			// ctor
+			public LifecycleHelperHandler(SdlRouterService provider) {
+				_service = new WeakReference<>(provider);
+			}
+
+			@Override
+			public void handleMessage(Message msg) {
+				switch(msg.what) {
+					case TransportConstants.ENFORCE_START_SLIP_TRANSPORT:
+					{
+						// @TODO start slipTransport here.
+						if (_service.get() != null) {
+							_service.get().mRegisteredAppMonitor.start(_service);
+						}
+
+					}
+						break;
+					case TransportConstants.ENFORCE_CLOSE_SELF:
+					{
+						if (_service.get() != null) {
+							_service.get().closeSelf();
+						}
+					}
+						break;
+					default:
+						break;
+				}
+			}
+		}
+
+		interface RegisteredAppListener {
+			void applicationRegistered(TransportType transportType);
+		}
+
+		private class RegisteredAppsMonitor implements RegisteredAppListener {
+			private boolean mRunning;
+			private int mCounter;
+			private int mPrevCounter;
+			private final Handler mHandler = new Handler(Looper.getMainLooper());
+
+			public void start(final WeakReference<SdlRouterService> reference) {
+				Log.d(TAG, "start RegisteredAppsMonitor");
+				mRunning = true;
+				mCounter = 0;
+				mPrevCounter = 0;
+				mHandler.postDelayed(new Runnable() {
+					@Override
+					public void run() {
+						if (mRunning && mCounter > 0 && mCounter == mPrevCounter) {
+							stop(reference);
+						}
+						if (mRunning) {
+							mPrevCounter = mCounter;
+							mHandler.postDelayed(this, 1000);
+						}
+					}
+				}, 1000);
+			}
+
+			public void stop(final WeakReference<SdlRouterService> reference) {
+				if (mRunning) {
+					Log.d(TAG, "stop RegisterAppMonitor");
+					mRunning = false;
+					mCounter = 0;
+					mHandler.post(new Runnable() {
+						@Override
+						public void run() {
+							if (reference.get() != null) {
+								reference.get().initSlipTransport();
+							}
+						}
+					});
+				}
+			}
+
+			@Override
+			public void applicationRegistered(TransportType transportType) {
+				if (transportType.equals(TransportType.BLUETOOTH)) {
+					mCounter++;
+				}
+			}
+		}
+
 	    final Messenger xmaProviderMessenger = new Messenger(new XmaProviderHandler(this));
 
 	    class XmaProviderHandler extends Handler implements XmaSocket.XmaSocketListener {
@@ -1227,8 +1315,11 @@ public class SdlRouterService extends Service{
                 Log.d(TAG, "Received bind request for USB; disregard for SLIP router");
                 //return this.usbTransferMessenger.getBinder();
             } else if (TransportConstants.XMA_PROVIDER_ACTION.equals(requestType)) {
-			    Log.d(TAG, "Got XMA Provider request");
-			    return xmaProviderMessenger.getBinder();
+				Log.d(TAG, "Got XMA Provider request");
+				return xmaProviderMessenger.getBinder();
+			} else if (TransportConstants.LIFECYCLE_HELPER_ACTION.equals(requestType)) {
+				Log.i(TAG, "Got Lifecycle Helper request");
+				return  lifeCycleHelperMessenger.getBinder();
 			}else{
 				Log.w(TAG, "Unknown bind request type");
 			}
@@ -1430,6 +1521,10 @@ public class SdlRouterService extends Service{
 
 		packetExecutor =  Executors.newSingleThreadExecutor();
 
+		startUpSequence();
+	}
+
+	protected void initSlipTransport() {
 		// Initialize UsbSlipDriver
 		UsbSlipDriver.init(this);
 		UsbSlipDriver.getInstance().setConnectionListener(new UsbSlipDriver.ConnectionListener() {
@@ -1451,9 +1546,7 @@ public class SdlRouterService extends Service{
 				slipTransport.start();
 			}
 		}
-		startUpSequence();
 	}
-
 	/**
 	 * The method will attempt to start up the next router service in line based on the sorting criteria of best router service.
 	 */
@@ -1633,9 +1726,11 @@ public class SdlRouterService extends Service{
 				android.os.Process.killProcess(android.os.Process.myPid());
 			}catch(Exception e){}
 		}
-		if (slipTransport != null) {
-		    slipTransport.stop();
-        }
+		synchronized (SLIP_TRANSPORT_LOCK) {
+			if (slipTransport != null) {
+				slipTransport.stop();
+			}
+		}
 	}
 	
 	private void unregisterAllReceivers(){
@@ -2941,6 +3036,9 @@ public class SdlRouterService extends Service{
 									appId = app.getAppId();
 									sessionMap.put(sessionId, appId);
 									//Log.d(TAG, "sessionMap put(" + sessionId + ", " + appId + ")");
+									if (mRegisteredAppMonitor != null) {
+										mRegisteredAppMonitor.applicationRegistered(transportType);
+									}
 									break;
 								}
 							}
