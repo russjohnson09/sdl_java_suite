@@ -1716,7 +1716,9 @@ public class SdlRouterService extends Service{
 		}
 		packetWriteTaskMasterMap = null;
 
-		UsbSlipDriver.getInstance().stop();
+		if (UsbSlipDriver.getInstance() != null) {
+			UsbSlipDriver.getInstance().stop();
+		}
 
 		super.onDestroy();
 		System.gc(); //Lower end phones need this hint

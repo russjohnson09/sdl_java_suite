@@ -102,7 +102,7 @@ public class XevoMultiplexSlipTransport extends MultiplexBaseTransport {
 
 	@Override
 	public boolean isConnected() {
-		return UsbSlipDriver.getInstance().isConnected();
+		return (UsbSlipDriver.getInstance() != null && UsbSlipDriver.getInstance().isConnected());
 	}
 
 	private void registerReciever(final Context context) {
@@ -114,7 +114,7 @@ public class XevoMultiplexSlipTransport extends MultiplexBaseTransport {
 			Log.d(TAG, "registerReceiver");
 		}
 		// Check to see if SlipDriver is connected, and automatically start ReaderThread.
-		if (UsbSlipDriver.getInstance().isConnected()) {
+		if (isConnected()) {
 			// let's send broadcast again.
 			Handler handler = new Handler(Looper.getMainLooper());
 			handler.postDelayed(new Runnable() {

@@ -409,8 +409,9 @@ public class UsbSlipDriver implements ISlipDriver {
      * @return
      */
     public static UsbSlipDriver getInstance() {
-        if (sInstance == null)
-            throw new RuntimeException("Must call init before call getInstance");
+        // Do not throw RuntimeException here, because UsbSlipDriver will be late-created now.
+        //if (sInstance == null)
+        //    throw new RuntimeException("Must call init before call getInstance");
 
         return sInstance;
     }
