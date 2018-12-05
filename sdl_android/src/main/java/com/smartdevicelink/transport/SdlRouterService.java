@@ -287,8 +287,9 @@ public class SdlRouterService extends Service{
 					|| bluetoothTransport.getState() == MultiplexBluetoothTransport.STATE_NONE)){
 				Log.e(TAG, "Serial service not initialized while registering app");
 				//Maybe we should try to do a connect here instead
-				Log.d(TAG, "Serial service being restarted");
-				initBluetoothSerialService();
+				//Log.d(TAG, "Serial service being restarted");
+				Log.d(TAG, "We won't restart BT transport until MS has been connected");
+				//initBluetoothSerialService();
 
 
 			}
