@@ -917,10 +917,12 @@ public class SdlRouterService extends Service{
 			@Override
 			public void handleMessage(Message msg) {
 				switch(msg.what) {
-					case TransportConstants.ENFORCE_START_SLIP_TRANSPORT:
+					case TransportConstants.ENFORCE_START_TRANSPORT:
 					{
 						// @TODO start slipTransport here.
 						if (_service.get() != null) {
+							// we will start BT transport here.
+							_service.get().initBluetoothSerialService();
 							_service.get().mRegisteredAppMonitor.start(_service);
 						}
 
@@ -1600,7 +1602,8 @@ public class SdlRouterService extends Service{
 		
 		if(!connectAsClient){
 			if(bluetoothAvailable()){
-				initBluetoothSerialService();
+				// SDL-2846: 17PLUS, we will postpone the BT transport until MS is connected.
+				//initBluetoothSerialService();
 			} else {
 				Log.d(TAG, "startupSequence: bluetooth not available");
 			}
@@ -1651,7 +1654,8 @@ public class SdlRouterService extends Service{
 				//Make sure we are listening on RFCOMM
 				if(startSequenceComplete){ //We only check if we are sure we are already through the start up process
 					Log.i(TAG, "Received ping, making sure we are listening to bluetooth rfcomm");
-					initBluetoothSerialService();
+					// SDL-2846: postpone BT transport until MS is connected.
+					//initBluetoothSerialService();
 				}
 			}
 		}
@@ -2205,7 +2209,8 @@ public class SdlRouterService extends Service{
             case BLUETOOTH:
                 if(!connectAsClient ){
                     if(!legacyModeEnabled && !closing){
-                        initBluetoothSerialService();
+                        // SDL-2846: postpone BT transport until MS is connected.
+                        //initBluetoothSerialService();
                     }
                 }
                 break;

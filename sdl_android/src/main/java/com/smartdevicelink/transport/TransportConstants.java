@@ -306,6 +306,6 @@ public class TransportConstants {
 	/**
 	 * LIFECYCLE HELPER Message (used for CAPP)
 	 */
-	public static final int ENFORCE_START_SLIP_TRANSPORT                    = 0x87;
+	public static final int ENFORCE_START_TRANSPORT                         = 0x87;
 	public static final int ENFORCE_CLOSE_SELF                              = 0x88;
 }
