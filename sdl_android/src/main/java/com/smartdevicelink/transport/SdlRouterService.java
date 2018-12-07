@@ -920,7 +920,7 @@ public class SdlRouterService extends Service{
 				switch(msg.what) {
 					case TransportConstants.ENFORCE_START_TRANSPORT:
 					{
-						// @TODO start slipTransport here.
+						Log.d("MSStateTask", "LifecycleHelperHandler got ENFORCE_START_TRANSPORT");
 						if (_service.get() != null) {
 							// we will start BT transport here.
 							_service.get().initBluetoothSerialService();
@@ -1677,7 +1677,7 @@ public class SdlRouterService extends Service{
 			altTransportTimerHandler = null;
 		}
 
-		Log.w(TAG, "Sdl Router Service Destroyed");
+		Log.w("MSStateTask", "Sdl Router Service Destroyed");
 	    closing = true;
 		//No need for this Broadcast Receiver anymore
 		unregisterAllReceivers();
@@ -1721,6 +1721,12 @@ public class SdlRouterService extends Service{
 		}
 		packetWriteTaskMasterMap = null;
 
+		synchronized (SLIP_TRANSPORT_LOCK) {
+			Log.d("MSStateTask", "about stopping slipTransport");
+			if (slipTransport != null) {
+				slipTransport.stop();
+			}
+		}
 		if (UsbSlipDriver.getInstance() != null) {
 			UsbSlipDriver.getInstance().stop();
 		}
@@ -1732,11 +1738,6 @@ public class SdlRouterService extends Service{
 			try{
 				android.os.Process.killProcess(android.os.Process.myPid());
 			}catch(Exception e){}
-		}
-		synchronized (SLIP_TRANSPORT_LOCK) {
-			if (slipTransport != null) {
-				slipTransport.stop();
-			}
 		}
 	}
 	
