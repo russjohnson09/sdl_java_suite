@@ -446,6 +446,7 @@ public class SdlRouterService extends Service{
 	            		returnBundle = new Bundle();
 	            		//Add params if connected
 	            		if(service.isTransportConnected){
+	            		    Log.d(TAG, "preparing for TransportConnected; routerMessagingVersion is " + app.routerMessagingVersion);
 							ArrayList<TransportRecord> records = service.getConnectedTransports();
 							if (!records.isEmpty()) {
 								// @REVIEW: the last record is always right? Is it guaranteed?
@@ -920,11 +921,10 @@ public class SdlRouterService extends Service{
 				switch(msg.what) {
 					case TransportConstants.ENFORCE_START_TRANSPORT:
 					{
-						Log.d("MSStateTask", "LifecycleHelperHandler got ENFORCE_START_TRANSPORT");
+						Log.d("capp.SdlRouterService", "LifecycleHelperHandler got ENFORCE_START_TRANSPORT");
 						if (_service.get() != null) {
 							// we will start BT transport here.
-							_service.get().initBluetoothSerialService();
-							_service.get().mRegisteredAppMonitor.start(_service);
+							_service.get().enforceStartTransports(_service);
 						}
 
 					}
@@ -993,6 +993,11 @@ public class SdlRouterService extends Service{
 					mCounter++;
 				}
 			}
+		}
+
+		protected void enforceStartTransports(WeakReference<SdlRouterService> reference) {
+			initBluetoothSerialService();
+			mRegisteredAppMonitor.start(reference);
 		}
 
 	    final Messenger xmaProviderMessenger = new Messenger(new XmaProviderHandler(this));
