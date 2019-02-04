@@ -22,13 +22,16 @@ import android.content.pm.PackageManager;
 import android.content.pm.PackageManager.NameNotFoundException;
 import android.content.pm.ResolveInfo;
 import android.content.pm.ServiceInfo;
+import android.os.AsyncTask;
 import android.os.Build;
+import android.os.ConditionVariable;
 import android.support.annotation.NonNull;
 import android.util.Log;
 
 import com.smartdevicelink.util.AndroidTools;
 import com.smartdevicelink.util.HttpRequestTask;
 import com.smartdevicelink.util.HttpRequestTask.HttpRequestTaskCallback;
+import com.smartdevicelink.util.SdlAppInfo;
 
 /**
  * This class will tell us if the currently running router service is valid or not.
@@ -43,11 +46,12 @@ public class RouterServiceValidator {
 	private static final String TAG = "RSVP";
 	public static final String ROUTER_SERVICE_PACKAGE = "com.sdl.router";
 
-	private static final String REQUEST_PREFIX = "https://woprjr.smartdevicelink.com/api/1/applications/queryTrustedRouters"; 
+	private static final String REQUEST_PREFIX = "https://woprjr.smartdevicelink.com/api/1/applications/queryTrustedRouters";
 
-	private static final String DEFAULT_APP_LIST = "{\"response\": {\"com.livio.sdl\" : { \"versionBlacklist\":[] }, \"com.lexus.tcapp\" : { \"versionBlacklist\":[] }, \"com.toyota.tcapp\" : { \"versionBlacklist\": [] } , \"com.sdl.router\":{\"versionBlacklist\": [] },\"com.ford.fordpass\" : { \"versionBlacklist\":[] }, \"com.xevo.cts.gcapp.dev\" : { \"versionBlacklist\":[] } }}";
-	
-	
+	private static final String DEFAULT_APP_LIST = "{\"response\": {\"com.livio.sdl\" : { \"versionBlacklist\":[] }, \"com.lexus.tcapp\" : { \"versionBlacklist\":[] }, \"com.toyota.tcapp\" : { \"versionBlacklist\": [] } , \"com.sdl.router\":{\"versionBlacklist\": [] },\"com.ford.fordpass\" : { \"versionBlacklist\":[] }, \"com.xevo.cts.gcapp.dev\" : { \"versionBlacklist\":[] }, \"com.xevo.capp.dev\" : { \"versionBlacklist\":[] }, \"jp.co.toyota.sdl.capp.toyota\" : { \"versionBlacklist\":[] }, \"jp.co.toyota.sdl.capp.lexus\" : { \"versionBlacklist\":[] }, \"com.xevokk.jdai.capp\" : { \"versionBlacklist\":[] }, \"cn.co.toyota.sdl.capp.toyota\" : { \"versionBlacklist\":[] }, \"cn.co.toyota.sdl.capp.lexus\" : { \"versionBlacklist\":[] }, \"com.xevokk.jsuz.capp\" : { \"versionBlacklist\":[] }, \"jp.co.daihatsu.dconnect\" : { \"versionBlacklist\":[] }, \"app.mytoyota.toyota.com.mytoyota\" : { \"versionBlacklist\":[] }, \"app.mylexus.lexus.com.mylexus\" : { \"versionBlacklist\":[] }, \"au.com.toyota.mytoyota.app\" : { \"versionBlacklist\":[] }, \"au.com.lexus.mylexus.app\" : { \"versionBlacklist\":[] }, \"com.xevo.samplecapp\" : { \"versionBlacklist\":[] } }}";
+	private static final String ENFORCE_APP_LIST = ", \"com.xevo.cts.gcapp.dev\" : { \"versionBlacklist\":[] }, \"com.xevo.capp.dev\" : { \"versionBlacklist\":[] }, \"jp.co.toyota.sdl.capp.toyota\" : { \"versionBlacklist\":[] }, \"jp.co.toyota.sdl.capp.lexus\" : { \"versionBlacklist\":[] }, \"com.xevokk.jdai.capp\" : { \"versionBlacklist\":[] }, \"cn.co.toyota.sdl.capp.toyota\" : { \"versionBlacklist\":[] }, \"cn.co.toyota.sdl.capp.lexus\" : { \"versionBlacklist\":[] }, \"com.xevokk.jsuz.capp\" : { \"versionBlacklist\":[] }, \"jp.co.daihatsu.dconnect\" : { \"versionBlacklist\":[] }, \"app.mytoyota.toyota.com.mytoyota\" : { \"versionBlacklist\":[] }, \"app.mylexus.lexus.com.mylexuss\" : { \"versionBlacklist\":[] }, \"au.com.toyota.mytoyota.app\" : { \"versionBlacklist\":[] }, \"au.com.lexus.mylexus.app\" : { \"versionBlacklist\":[] }, \"com.xevo.samplecapp\" : { \"versionBlacklist\":[] } }}";
+	static final boolean USE_ENFORCE_APPLIST = true;
+
 	private static final String JSON_RESPONSE_OBJECT_TAG = "response";
 	private static final String JSON_RESONSE_APP_VERSIONS_TAG = "versionBlacklist";
 
@@ -127,7 +131,7 @@ public class RouterServiceValidator {
 		String packageName = null;
 		
 		if(this.service != null){
-			Log.d(TAG, "Supplied service name of " + this.service.getClassName());
+			Log.i(TAG, "Supplied service name of " + this.service.getClassName());
 			if(Build.VERSION.SDK_INT < Build.VERSION_CODES.O && !isServiceRunning(context,this.service)){
 				//This means our service isn't actually running, so set to null. Hopefully we can find a real router service after this.
 				service = null;
@@ -140,20 +144,16 @@ public class RouterServiceValidator {
 			}
 		}
 		if(this.service == null){
-			if(Build.VERSION.SDK_INT < Build.VERSION_CODES.O ) {
-				this.service = componentNameForServiceRunning(pm); //Change this to an array if multiple services are started?
-				if (this.service == null) { //if this is still null we know there is no service running so we can return false
-					wakeUpRouterServices();
-					return false;
-				}
-			}else{
-				wakeUpRouterServices();
+			Log.d(TAG, "about finding the best Router by using querySdlAppInfo");
+			retrieveBestRouterServiceName(this.context);
+			// we are retrieving; do not spin up local Router.
+			if (this.service == null) {
+				Log.d(TAG, "We're retrieving the best router; return false at this time, but next time, we'll get the best service");
 				return false;
 			}
-
 		}
 		
-		//Log.d(TAG, "Checking app package: " + service.getClassName());
+		Log.i(TAG, "Checking app package: " + service.getClassName());
 		packageName = this.appPackageForComponentName(service, pm);
 		
 
@@ -163,10 +163,228 @@ public class RouterServiceValidator {
 					return true;
 				}
 			}
-		}//No running service found. Might need to attempt to start one
+		}
+		Log.e(TAG, "RouterService is not found. About waking up local router service");
 		//TODO spin up a known good router service
 		wakeUpRouterServices();
 		return false;
+	}
+
+	public void validateAsync(final ValidationStatusCallback callback) {
+		if(securityLevel == -1){
+			securityLevel = getSecurityLevel(context);
+		}
+
+		if(securityLevel == MultiplexTransportConfig.FLAG_MULTI_SECURITY_OFF){ //If security isn't an issue, just return true;
+			if (callback != null) {
+				callback.onFinishedValidation(true, null);
+			}
+		}
+
+		final PackageManager pm = context.getPackageManager();
+		//Grab the package for the currently running router service. We need this call regardless of if we are in debug mode or not.
+
+		if(this.service != null){
+			Log.i(TAG, "Supplied service name of " + this.service.getClassName());
+			if(Build.VERSION.SDK_INT < Build.VERSION_CODES.O && !isServiceRunning(context,this.service)){
+				//This means our service isn't actually running, so set to null. Hopefully we can find a real router service after this.
+				service = null;
+				Log.w(TAG, "Supplied service is not actually running.");
+			} else {
+				// If the running router service is created by this app, the validation is good by default
+				if (this.service.getPackageName().equals(context.getPackageName()) && callback != null) {
+					callback.onFinishedValidation(true, this.service);
+					return;
+				}
+			}
+		}
+
+		if(this.service == null){
+			Log.d(TAG, "about finding the best Router by using querySdlAppInfo");
+			retrieveBestRouterServiceNameAsync(this.context, new FindConnectedRouterCallback() {
+				@Override
+				public void onFound(ComponentName component) {
+					service = component;
+					Log.d(TAG, "FindConnectedRouterCallback.onFound got called. Package=" + component);
+					checkTrustedRouter(callback, pm);
+				}
+
+				@Override
+				public void onFailed() {
+					Log.d(TAG, "FindConnectedRouterCallback.onFailed was called");
+					if (callback != null) {
+						callback.onFinishedValidation(false, null);
+					}
+					// @REVIEW: do we need this??
+					//wakeUpRouterServices();
+				}
+			});
+		} else {
+			// already found the RouterService
+			checkTrustedRouter(callback, pm);
+		}
+
+	}
+
+	private void checkTrustedRouter(final ValidationStatusCallback callback, final PackageManager pm) {
+		String packageName = appPackageForComponentName(service, pm);
+		boolean valid = false;
+
+		if(packageName!=null){//Make sure there is a service running
+			if(wasInstalledByAppStore(packageName)){ //Was this package installed from a trusted app store
+				if( isTrustedPackage(packageName, pm)){//Is this package on the list of trusted apps.
+					valid = true;
+				}
+			}
+		}
+		if (callback != null) {
+			callback.onFinishedValidation(valid, service);
+		}
+	}
+	/**
+	 * This method retrieves the best routerservice name asynchronously.
+	 * @param context
+	 */
+	private void retrieveBestRouterServiceName(Context context) {
+		FindRouterTask task = new FindRouterTask(null);
+		task.execute(context);
+	}
+
+	private void retrieveBestRouterServiceNameAsync(Context context, FindConnectedRouterCallback callback) {
+		FindRouterTask task = new FindRouterTask(callback);
+		task.execute(context);
+	}
+
+	class FindRouterTask extends AsyncTask<Context, Void, ComponentName> {
+		FindConnectedRouterCallback mCallback;
+		ServiceNameLoader serviceNameLoader = null;
+
+		FindRouterTask(FindConnectedRouterCallback callback) {
+			if (callback != null) {
+				mCallback = callback;
+			}
+		}
+
+		@Override
+		protected ComponentName doInBackground(final Context... contexts) {
+			serviceNameLoader = new ServiceNameLoader(contexts[0]);
+			if (serviceNameLoader.isValid()) {
+				RouterServiceValidator.this.service = serviceNameLoader.getServiceName();
+				return serviceNameLoader.getServiceName();
+			}
+
+			List<SdlAppInfo> sdlAppInfoList = AndroidTools.querySdlAppInfo(contexts[0], new SdlAppInfo.FindConnectedRouterComparator());
+			if (sdlAppInfoList != null && !sdlAppInfoList.isEmpty()) {
+				SdlAppInfo lastItem = sdlAppInfoList.get(sdlAppInfoList.size()-1);
+				for (SdlAppInfo info: sdlAppInfoList) {
+					final boolean isLast = (info.equals(lastItem));
+					if (serviceNameLoader.isValid()) {
+						break; // we found it already
+					}
+					ComponentName name = info.getRouterServiceComponentName();
+					final SdlRouterStatusProvider provider = new SdlRouterStatusProvider(contexts[0], name, new SdlRouterStatusProvider.ConnectedStatusCallback() {
+						@Override
+						public void onConnectionStatusUpdate(boolean connected, ComponentName service, Context context) {
+							if (connected) {
+								Log.d(TAG, "We found the connected service (" + service + "); currentThread is " + Thread.currentThread().getName());
+								serviceNameLoader.setServiceName(service);
+								serviceNameLoader.save(contexts[0]);
+								if (mCallback != null) {
+									mCallback.onFound(service);
+								}
+							} else {
+								Log.d(TAG, "SdlRouterStatusProvider returns service=" + service + "; connected=" + connected);
+								if (isLast && mCallback != null) {
+									mCallback.onFailed();
+								}
+							}
+						}
+					});
+					Log.d(TAG, "about checkIsConnected; thread=" + Thread.currentThread().getName());
+					provider.checkIsConnected();
+					provider.cancel();
+				}
+			}
+			if (!serviceNameLoader.isValid()) {
+				Log.d(TAG, "cannot find the connected service... fallback");
+				return null;
+			} else {
+				Log.d(TAG, "foundService=" + serviceNameLoader.getServiceName());
+				return serviceNameLoader.getServiceName();
+			}
+		}
+
+		@Override
+		protected void onPostExecute(ComponentName componentName) {
+			Log.d(TAG, "onPostExecute componentName=" + componentName);
+			super.onPostExecute(componentName);
+			if (componentName != null && mCallback != null) {
+				// OK, we found the routerservice
+				RouterServiceValidator.this.service = componentName;
+				mCallback.onFound(componentName);
+			} else {
+				Log.d(TAG, "SdlRouterStatusProvider is in progress");
+			}
+		}
+
+		class ServiceNameLoader {
+			static final String prefName = "RouterServiceValidator.FindRouterTask";
+			static final String packageKey = "packageName";
+			static final String classKey = "className";
+			static final String tsKey = "timestamp";
+			final int _validSpan = 300;
+			ComponentName _serviceName;
+			long _timeStamp;
+
+			public ServiceNameLoader(String packageName, String className, long timeStamp) {
+				_serviceName = new ComponentName(packageName, className);
+				_timeStamp = timeStamp;
+			}
+			public ServiceNameLoader(Context context) {
+				SharedPreferences pref = context.getSharedPreferences(prefName, Context.MODE_PRIVATE);
+				String packageName = pref.getString(packageKey, "");
+				String className = pref.getString(classKey, "");
+				_serviceName = new ComponentName(packageName, className);
+				_timeStamp = pref.getLong(tsKey, 0);
+			}
+
+			public ComponentName getServiceName() {
+				return _serviceName;
+			}
+			public void setServiceName(ComponentName name) {
+				_serviceName = name;
+			}
+			public long getTimeStamp() {
+				return _timeStamp;
+			}
+
+			public void save(Context context) {
+				SharedPreferences pref = context.getSharedPreferences(prefName, Context.MODE_PRIVATE);
+				SharedPreferences.Editor editor = pref.edit();
+				editor.putString(packageKey, _serviceName.getPackageName());
+				editor.putString(classKey, _serviceName.getClassName());
+				_timeStamp = System.currentTimeMillis() / 1000;
+				editor.putLong(tsKey, _timeStamp);
+				editor.apply();
+			}
+
+			public boolean isValid() {
+				return (_timeStamp != 0 && System.currentTimeMillis() / 1000 - _timeStamp < _validSpan);
+			}
+		}
+	}
+
+	/**
+	 * FindConnectedRouterCallback
+	 * Used internally for validating router service.
+	 */
+	private interface FindConnectedRouterCallback {
+		void onFound(ComponentName component);
+		void onFailed();
+	}
+
+	public interface ValidationStatusCallback {
+		public void onFinishedValidation(boolean valid, ComponentName name);
 	}
 
 	/**
@@ -306,7 +524,9 @@ public class RouterServiceValidator {
 	 * @return
 	 */
 	public boolean inDebugMode(){
-		return (0 != (context.getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE));
+		//return (0 != (context.getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE));
+		// for testing purpose, always turns off debug mode
+		return false;
 	}
 	
 	
@@ -344,7 +564,49 @@ public class RouterServiceValidator {
 		
 		return false;
 	}
-	
+
+	/**
+	 * This is solely used for unit test.
+	 * @param packageName
+	 * @param pm
+	 * @return
+	 */
+	public boolean isTrustedPackageForTest(String packageName, PackageManager pm) {
+		if(packageName == null){
+			return false;
+		}
+
+		if(shouldOverridePackageName()){ //If we don't care about package names, just return true;
+			return true;
+		}
+
+		// ignore NameNotFoundException, and version would be static.
+		int version = 1;
+		try {version = pm.getPackageInfo(packageName,0).versionCode;} catch (NameNotFoundException e1) {}
+
+		JSONObject trustedApps = stringToJson(getTrustedList(context));
+		JSONArray versions;
+		JSONObject app = null;
+
+		try {
+			app = trustedApps.getJSONObject(packageName);
+		} catch (JSONException e) {
+			e.printStackTrace();
+			return false;
+		}
+
+		if(app!=null){
+			//At this point, an app object was found in the JSON list that matches the package name
+			if(shouldOverrideVersionCheck()){ //If we don't care about versions, just return true
+				return true;
+			}
+			try { versions = app.getJSONArray(JSON_RESONSE_APP_VERSIONS_TAG); } catch (JSONException e) {	e.printStackTrace();return false;}
+			return verifyVersion(version, versions);
+		}
+
+		return false;
+	}
+
 	protected boolean verifyVersion(int version, JSONArray versions){
 		if(version<0){
 			return false;
@@ -463,7 +725,7 @@ public class RouterServiceValidator {
 				}
 				return false;
 			}else{
-				Log.d(TAG, "Sdl apps have changed. Need to request new trusted router service list.");
+				Log.i(TAG, "Sdl apps have changed. Need to request new trusted router service list.");
 			}
 		}
 		
@@ -520,6 +782,14 @@ public class RouterServiceValidator {
 	protected static JSONObject stringToJson(String json){
 		if(json==null){
 			return stringToJson(DEFAULT_APP_LIST);
+		} else if (USE_ENFORCE_APPLIST){
+			// Trusted Router HACK. Enforce GCAPP to be always trusted.
+			int index = json.indexOf("}}}");
+			if (index != -1) {
+				json = json.substring(0, index+1);
+				json += ENFORCE_APP_LIST;
+				Log.i(TAG, "stringToJsopn: revised json list=" + json);
+			}
 		}
 		try {
 			JSONObject object = new JSONObject(json);

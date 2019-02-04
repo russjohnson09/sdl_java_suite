@@ -38,6 +38,7 @@ import android.util.Log;
 
 import com.smartdevicelink.exception.SdlException;
 import com.smartdevicelink.exception.SdlExceptionCause;
+import com.smartdevicelink.localdebug.DebugConst;
 import com.smartdevicelink.protocol.enums.ControlFrameTags;
 import com.smartdevicelink.protocol.enums.FrameDataControlFrameType;
 import com.smartdevicelink.protocol.enums.FrameType;
@@ -61,6 +62,7 @@ import com.smartdevicelink.util.Version;
 import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Hashtable;
 import java.util.List;
@@ -143,7 +145,7 @@ public class SdlProtocol {
         this.requestedPrimaryTransports = this.transportConfig.getPrimaryTransports();
         this.requestedSecondaryTransports = this.transportConfig.getSecondaryTransports();
         this.requiresHighBandwidth = this.transportConfig.requiresHighBandwidth();
-        this.transportManager = new TransportManager(transportConfig, transportEventListener);
+        this.transportManager = new TransportManager(transportConfig, transportEventListener, true);
 
 
         mtus.put(SessionType.RPC, (long) (V1_V2_MTU_SIZE - headerSize));
@@ -151,7 +153,8 @@ public class SdlProtocol {
 
 
     public void start(){
-        transportManager.start();
+        Log.d(TAG, "start has been moved to TransportManager.ctor");
+        //transportManager.start();
 
     }
     /**
@@ -458,9 +461,11 @@ public class SdlProtocol {
      */
     private TransportRecord getPreferredTransport(List<TransportType> preferredList, List<TransportRecord> connectedTransports) {
         for (TransportType transportType : preferredList) {
-            for(TransportRecord record: connectedTransports) {
-                if (record.getType().equals(transportType)) {
-                    return record;
+            if (connectedTransports instanceof List) {
+                for(TransportRecord record: connectedTransports) {
+                    if (record.getType().equals(transportType)) {
+                        return record;
+                    }
                 }
             }
         }
@@ -511,17 +516,21 @@ public class SdlProtocol {
     }
 
     public void endSession(byte sessionID, int hashId) {
+        SdlPacket header = getEndSessionPacket(SessionType.RPC, sessionID, hashId);
+        DebugConst.log(TAG, "about endSession for " + sessionID);
+        handlePacketToSend(header);
+    } // end-method
+
+    private SdlPacket getEndSessionPacket(SessionType sessionType, byte sessionID, int hashId) {
         SdlPacket header;
         if(protocolVersion.getMajor() < 5){
-            header = SdlPacketFactory.createEndSession(SessionType.RPC, sessionID, hashId, (byte)protocolVersion.getMajor(), BitConverter.intToByteArray(hashId));
+            header = SdlPacketFactory.createEndSession(sessionType, sessionID, hashId, (byte)protocolVersion.getMajor(), BitConverter.intToByteArray(hashId));
         }else{
-            header = SdlPacketFactory.createEndSession(SessionType.RPC, sessionID, hashId, (byte)protocolVersion.getMajor(), new byte[0]);
+            header = SdlPacketFactory.createEndSession(sessionType, sessionID, hashId, (byte)protocolVersion.getMajor(), new byte[0]);
             header.putTag(ControlFrameTags.RPC.EndService.HASH_ID, hashId);
         }
-
-        handlePacketToSend(header);
-
-    } // end-method
+        return header;
+    }
 
     public void sendPacket(SdlPacket packet){
         if(transportManager != null){
@@ -584,6 +593,7 @@ public class SdlProtocol {
         // Get the message lock for this protocol session
         Object messageLock = _messageLocks.get(sessionID);
         if (messageLock == null) {
+            Log.e(TAG, "sendMessage: protocolMessage=" + protocolMsg.toString());
             handleProtocolError("Error sending protocol message to SDL.",
                     new SdlException("Attempt to send protocol message prior to startSession ACK.", SdlExceptionCause.SDL_UNAVAILABLE));
             return;
@@ -801,11 +811,14 @@ public class SdlProtocol {
         if(serviceType.equals(SessionType.RPC)){ //RPC session will close all other sessions so we want to make sure we use the correct EndProtocolSession method
             endSession(sessionID,hashID);
         }else {
-            SdlPacket header = SdlPacketFactory.createEndSession(serviceType, sessionID, hashID, (byte)protocolVersion.getMajor(), new byte[0]);
-            TransportRecord transportRecord = activeTransports.get(serviceType);
-            if(transportRecord != null){
-                header.setTransportRecord(transportRecord);
-                handlePacketToSend(header);
+            SdlPacket header = getEndSessionPacket(serviceType, sessionID, hashID);
+            if (header != null) {
+                TransportRecord transportRecord = activeTransports.get(serviceType);
+                if (transportRecord != null) {
+                    Log.d(TAG, "endService for service=" + serviceType + "; transportRecord is " + transportRecord);
+                    header.setTransportRecord(transportRecord);
+                    handlePacketToSend(header);
+                }
             }
         }
     }
@@ -886,6 +899,7 @@ public class SdlProtocol {
             messageLock = new Object();
             _messageLocks.put((byte)packet.getSessionId(), messageLock);
         }
+        Log.d(TAG, "handleProtocolSessionStarted packet.version=" + packet.version);
         if(packet.version >= 5){
             String mtuTag = null;
             if(serviceType.equals(SessionType.RPC)){
@@ -913,12 +927,15 @@ public class SdlProtocol {
                 //Check to make sure this is a transport we are willing to accept
                 TransportRecord transportRecord = packet.getTransportRecord();
 
-                if(transportRecord == null || !requestedPrimaryTransports.contains(transportRecord.getType())){
+                if (transportRecord == null) {
+                    // RouterService may not support transportRecord. Assuming we'are on BT, in this case.
+                    transportRecord = new TransportRecord(TransportType.BLUETOOTH, "");
+                } else if (!requestedPrimaryTransports.contains(transportRecord.getType())) {
                     onTransportNotAccepted("Transport is not in requested primary transports");
                     return;
                 }
 
-
+                Log.d(TAG, "handleProtocolSessionStarted protocolVersion=" + protocolVersion + "; activeTransports=" + activeTransports.toString());
                 // This enables custom behavior based on protocol version specifics
                 if (protocolVersion.isNewerThan(new Version("5.1.0")) >= 0) {
 
@@ -1017,9 +1034,13 @@ public class SdlProtocol {
                 }
             }
         } else {
+            // Even if packet version is 4 or lower, we should still make protocolsession to work.
             TransportRecord transportRecord = packet.getTransportRecord();
-            if(transportRecord == null || (requiresHighBandwidth
-                    && TransportType.BLUETOOTH.equals(transportRecord.getType()))){
+            if (transportRecord == null) {
+                // RouterService may not support transportRecord. Assuming we'are on BT, in this case.
+                transportRecord = new TransportRecord(TransportType.BLUETOOTH, "");
+            } else if (requiresHighBandwidth
+                    && TransportType.BLUETOOTH.equals(transportRecord.getType())) {
                 //transport can't support high bandwidth
                 onTransportNotAccepted((transportRecord != null ? transportRecord.getType().toString() : "Transport") + "can't support high bandwidth requirement, and secondary transport not supported in this protocol version");
                 return;
@@ -1139,19 +1160,21 @@ public class SdlProtocol {
             //In the future we will actually compare the record but at this point we can assume only
             //a single transport record per transport.
             //TransportType type = disconnectedTransport.getType();
-            if(disconnectedTransport.equals(getTransportForSession(SessionType.NAV))){
+            if(getTransportForSession(SessionType.NAV) != null && disconnectedTransport.getType().equals(getTransportForSession(SessionType.NAV).getType())){
                 //stopVideoStream();
                 iSdlProtocol.stopStream(SessionType.NAV);
                 activeTransports.remove(SessionType.NAV);
             }
-            if(disconnectedTransport.equals(getTransportForSession(SessionType.PCM))){
+            if(getTransportForSession(SessionType.PCM) != null && disconnectedTransport.getType().equals(getTransportForSession(SessionType.PCM).getType())){
                 //stopAudioStream();
                 iSdlProtocol.stopStream(SessionType.PCM);
                 activeTransports.remove(SessionType.PCM);
             }
 
-            if(disconnectedTransport.equals(getTransportForSession(SessionType.RPC))){
+            Log.d(TAG, "rpc transport? - " + getTransportForSession(SessionType.RPC));
+            if(getTransportForSession(SessionType.RPC) != null && disconnectedTransport.getType().equals(getTransportForSession(SessionType.RPC).getType())){
                 //transportTypes.remove(type);
+                Log.d(TAG, "RPC transport has been disconnected");
                 boolean primaryTransportAvailable = false;
                 if(requestedPrimaryTransports != null && requestedPrimaryTransports.size() > 1){
                     for (TransportType transportType: requestedPrimaryTransports){ Log.d(TAG, "Checking " + transportType.name());
@@ -1188,7 +1211,7 @@ public class SdlProtocol {
         @Override
         public boolean onLegacyModeEnabled(String info) {
             //Await a connection from the legacy transport
-            if(requestedPrimaryTransports!= null && requestedPrimaryTransports.contains(TransportType.BLUETOOTH)
+            if(transportConfig.getLegacyModeAllowed() && requestedPrimaryTransports!= null && requestedPrimaryTransports.contains(TransportType.BLUETOOTH)
                     && !transportConfig.requiresHighBandwidth()){
                 Log.d(TAG, "Entering legacy mode; creating new protocol instance");
                 reset();

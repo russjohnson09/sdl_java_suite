@@ -2,6 +2,7 @@ package com.smartdevicelink.protocol;
 
 import java.nio.ByteBuffer;
 import java.util.HashMap;
+import java.util.Map;
 
 import com.livio.BSON.BsonEncoder;
 import com.smartdevicelink.protocol.enums.FrameType;
@@ -10,6 +11,7 @@ import com.smartdevicelink.transport.utl.TransportRecord;
 import android.os.Parcel;
 import android.os.ParcelFormatException;
 import android.os.Parcelable;
+import com.smartdevicelink.localdebug.DebugConst;
 
 /**
  * This class is only intended to be parcelable from the transport broker to the SDL Router Service.
@@ -212,6 +214,14 @@ public class SdlPacket implements Parcelable{
 	
 	public byte[] constructPacket() {
 		if (bsonPayload != null && !bsonPayload.isEmpty()) {
+			{    // Custom BSON logging.
+				String log = "BSON (" + bsonPayload.size() + ")[";
+				for (Map.Entry<String, Object> e : bsonPayload.entrySet()) {
+					log += "(" + e.getKey() + ":" + e.getValue() + ")";
+				}
+				log += "]";
+				DebugConst.log("SdlPacket", log);
+			}
 			byte[] bsonBytes = BsonEncoder.encodeToBytes(bsonPayload);
 			payload = bsonBytes;
 			dataSize = bsonBytes.length;

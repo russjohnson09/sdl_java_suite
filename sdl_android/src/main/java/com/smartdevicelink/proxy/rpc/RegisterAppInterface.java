@@ -301,18 +301,18 @@ public class RegisterAppInterface extends RPCRequest {
 	 * @param isMediaApplication a Boolean value
 	 * @param languageDesired a Language Enumeration
 	 * @param hmiDisplayLanguageDesired
-	 * @param fullAppID a String value representing a unique ID, which an app will be given when approved <br>
+	 * @param appID a String value representing a unique ID, which an app will be given when approved <br>
 	 *            <b>Notes: </b>Maxlength = 100
 	 */
 	public RegisterAppInterface(@NonNull SdlMsgVersion syncMsgVersion, @NonNull String appName, @NonNull Boolean isMediaApplication,
-								@NonNull Language languageDesired, @NonNull Language hmiDisplayLanguageDesired, @NonNull String fullAppID) {
+								@NonNull Language languageDesired, @NonNull Language hmiDisplayLanguageDesired, @NonNull String appID) {
 		this();
 		setSdlMsgVersion(syncMsgVersion);
 		setAppName(appName);
 		setIsMediaApplication(isMediaApplication);
 		setLanguageDesired(languageDesired);
 		setHmiDisplayLanguageDesired(hmiDisplayLanguageDesired);
-		setFullAppID(fullAppID);
+		setAppID(appID);
 	}
 	/**
 	 * Gets the version of the SDL&reg; SmartDeviceLink interface
@@ -583,22 +583,22 @@ public class RegisterAppInterface extends RPCRequest {
    
     public void setHashID(String hashID) {
 		setParameters(KEY_HASH_ID, hashID);
-    }
-
+    }        
+    
 	/**
 	 * Gets the unique ID, which an app will be given when approved
-	 *
+	 * 
 	 * @return String - a String value representing the unique ID, which an app
 	 *         will be given when approved
 	 * @since SmartDeviceLink 2.0
 	 */
-	public String getAppID() {
-		return getString(KEY_APP_ID);
-	}
+    public String getAppID() {
+        return getString(KEY_APP_ID);
+    }
 
 	/**
 	 * Sets a unique ID, which an app will be given when approved
-	 *
+	 * 
 	 * @param appID
 	 *            a String value representing a unique ID, which an app will be
 	 *            given when approved
@@ -607,11 +607,11 @@ public class RegisterAppInterface extends RPCRequest {
 	 * @since SmartDeviceLink 2.0
 	 */
 	public void setAppID(@NonNull String appID) {
-		if (appID != null) {
-			setParameters(KEY_APP_ID, appID.toLowerCase());
-		} else {
+		//if (appID != null) {
+		//	setParameters(KEY_APP_ID, appID.toLowerCase());
+		//} else {
 			setParameters(KEY_APP_ID, appID);
-		}
+		//}
 	}
 
 	/**
@@ -653,11 +653,13 @@ public class RegisterAppInterface extends RPCRequest {
 
 	@Override
 	public void format(Version rpcVersion, boolean formatParams) {
+	    /*-- [swatanabe] setting FullAppID here causes compatibility problem and RAI to fail on SDL Core 4.5.
+	    ** Suppress this for the time being.
 		if(rpcVersion == null || rpcVersion.getMajor() >= 5) {
 			if (getFullAppID() == null) {
 				setFullAppID(getAppID());
 			}
-		}
+		}--*/
 		super.format(rpcVersion, formatParams);
 	}
 

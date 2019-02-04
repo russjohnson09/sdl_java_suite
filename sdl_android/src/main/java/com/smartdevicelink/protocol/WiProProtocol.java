@@ -1,5 +1,7 @@
 package com.smartdevicelink.protocol;
 
+import android.util.Log;
+
 import com.smartdevicelink.SdlConnection.SdlConnection;
 import com.smartdevicelink.SdlConnection.SdlSession;
 import com.smartdevicelink.exception.SdlException;
@@ -18,6 +20,7 @@ import com.smartdevicelink.streaming.video.VideoStreamingParameters;
 import com.smartdevicelink.util.BitConverter;
 import com.smartdevicelink.util.DebugTool;
 import com.smartdevicelink.util.Version;
+import com.smartdevicelink.localdebug.DebugConst;
 
 import java.io.ByteArrayOutputStream;
 import java.util.HashMap;
@@ -29,9 +32,10 @@ import java.util.List;
  */
 @Deprecated
 public class WiProProtocol extends AbstractProtocol {
+	private static final String TAG ="SdlProtocol";
 	private final static String FailurePropagating_Msg = "Failure propagating ";
 	//If increasing MAX PROTOCOL VERSION major version, make sure to alter it in SdlPsm
-	public static final Version MAX_PROTOCOL_VERSION = new Version("5.0.0");
+	public static final Version MAX_PROTOCOL_VERSION = new Version("5.1.0");
 	private Version protocolVersion = new Version("1.0.0");
 	byte _version = 1;
 
@@ -522,6 +526,20 @@ public class WiProProtocol extends AbstractProtocol {
 					rejectedParams = (List<String>) packet.getTag(rejectedTag);
 				}
 				if (serviceType.eq(SessionType.NAV) || serviceType.eq(SessionType.PCM)) {
+					// local logging...
+					String rejPrm = "";
+					if ( rejectedParams != null ) {
+						rejPrm = "cnt:" + rejectedParams.size() + " [";
+						for ( String s : rejectedParams ) {
+							rejPrm += s + ",";
+						}
+						rejPrm += "]";
+					} else {
+						rejPrm = null;
+					}
+					String mes = "WiProProtocol **NACK** /sessionId:" + (byte)packet.getSessionId() +
+							" /rejParam:" + rejPrm;
+					DebugConst.log("WiProProtocol", mes);
 					handleProtocolSessionNACKed(serviceType, (byte)packet.getSessionId(), getMajorVersionByte(), "", rejectedParams);
 				} else {
 					handleProtocolError("Got StartSessionNACK for protocol sessionID=" + packet.getSessionId(), null);
@@ -603,8 +621,10 @@ public class WiProProtocol extends AbstractProtocol {
 	} // end-class
 
 	@Override
+	@Deprecated
 	public void StartProtocolService(SessionType sessionType, byte sessionID, boolean isEncrypted) {
 		SdlPacket header = SdlPacketFactory.createStartSession(sessionType, 0x00, getMajorVersionByte(), sessionID, isEncrypted);
+		Log.d(TAG, String.format("StartProtocolService sessionType=%s, ID=%d", sessionType.getName(), sessionID));
 		if(sessionType.equals(SessionType.NAV)){
 			SdlSession videoSession = sdlconn.findSessionById(sessionID);
 			if(videoSession != null){
@@ -652,7 +672,13 @@ public class WiProProtocol extends AbstractProtocol {
 		if(serviceType.equals(SessionType.RPC)){ //RPC session will close all other sessions so we want to make sure we use the correct EndProtocolSession method
 			EndProtocolSession(serviceType,sessionID,hashID);
 		}else {
-			SdlPacket header = SdlPacketFactory.createEndSession(serviceType, sessionID, hashID, getMajorVersionByte(), new byte[0]);
+			SdlPacket header;
+			if (getMajorVersionByte() < 5) {
+				header = SdlPacketFactory.createEndSession(serviceType, sessionID, hashID, getMajorVersionByte(), BitConverter.intToByteArray(hashID));
+			} else {
+				header = SdlPacketFactory.createEndSession(serviceType, sessionID, hashID, getMajorVersionByte(), new byte[0]);
+				header.putTag(ControlFrameTags.RPC.EndService.HASH_ID, hashID);
+			}
 			handlePacketToSend(header);
 		}
 	}

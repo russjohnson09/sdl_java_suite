@@ -96,7 +96,6 @@ public class SdlSession implements ISdlConnectionListener, IHeartbeatMonitorList
         return lockScreenMan;
     }
 
-
     public IHeartbeatMonitor getOutgoingHeartbeatMonitor() {
         return _outgoingHeartbeatMonitor;
     }
@@ -303,6 +302,16 @@ public class SdlSession implements ISdlConnectionListener, IHeartbeatMonitorList
             mAudioPacketizer.stop();
             return true;
         }
+        // we have to EndService too
+        if (serviceListeners != null) {
+            CopyOnWriteArrayList<ISdlServiceListener> listeners = serviceListeners.get(SessionType.PCM);
+            if (listeners != null) {
+                for (ISdlServiceListener listener : listeners) {
+                    listener.onServiceEnded(this, SessionType.PCM);
+                }
+            }
+        }
+
         return false;
     }
 
@@ -311,6 +320,14 @@ public class SdlSession implements ISdlConnectionListener, IHeartbeatMonitorList
         if (mVideoPacketizer != null)
         {
             mVideoPacketizer.stop();
+            // we have to EndService too
+            if (serviceListeners != null) {
+                CopyOnWriteArrayList<ISdlServiceListener> listeners = serviceListeners.get(SessionType.NAV);
+                for (ISdlServiceListener listener : listeners) {
+                    listener.onServiceEnded(this, SessionType.NAV);
+                }
+            }
+
             return true;
         }
         return false;

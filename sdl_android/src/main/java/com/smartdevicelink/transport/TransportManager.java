@@ -32,8 +32,7 @@
 
 package com.smartdevicelink.transport;
 
-import android.bluetooth.BluetoothDevice;
-import android.content.BroadcastReceiver;
+import android.annotation.TargetApi;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
@@ -44,10 +43,14 @@ import android.os.Looper;
 import android.os.Message;
 import android.os.Parcelable;
 import android.util.Log;
+import android.os.Looper;
+import android.os.ConditionVariable;
+import android.content.Intent;
 
 import com.smartdevicelink.protocol.SdlPacket;
 import com.smartdevicelink.transport.enums.TransportType;
 import com.smartdevicelink.transport.utl.TransportRecord;
+import com.smartdevicelink.util.AndroidTools;
 
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
@@ -59,9 +62,11 @@ public class TransportManager {
 
     private final Object TRANSPORT_STATUS_LOCK;
 
+    TransportBrokerThread _brokerThread;
     TransportBrokerImpl transport;
     final List<TransportRecord> transportStatus;
     final TransportEventListener transportListener;
+    //final WeakReference<Context> contextWeakReference;
 
     //Legacy Transport
     MultiplexBluetoothTransport legacyBluetoothTransport;
@@ -70,13 +75,14 @@ public class TransportManager {
     final WeakReference<Context> contextWeakReference;
 
 
+
     /**
      * Managing transports
      * List for status of all transports
      * If transport is not connected. Request Router service connect to it. Get connected message
      */
 
-    public TransportManager(MultiplexTransportConfig config, TransportEventListener listener){
+    public TransportManager(final MultiplexTransportConfig config, TransportEventListener listener, final boolean autoStart){
 
         this.transportListener = listener;
         this.TRANSPORT_STATUS_LOCK = new Object();
@@ -90,15 +96,32 @@ public class TransportManager {
 
         contextWeakReference = new WeakReference<>(config.context);
 
-        RouterServiceValidator validator = new RouterServiceValidator(config);
-        if(validator.validate()){
-            transport = new TransportBrokerImpl(config.context, config.appId,config.service);
-        }else{
-            enterLegacyMode("Router service is not trusted. Entering legacy mode");
-        }
+        final RouterServiceValidator validator = new RouterServiceValidator(config);
+        validator.validateAsync(new RouterServiceValidator.ValidationStatusCallback() {
+            @Override
+            public void onFinishedValidation(boolean valid, ComponentName name) {
+                Log.d(TAG, "onFinishedValidation valid=" + valid + "; name=" + name);
+                if (valid) {
+                    ConditionVariable cond = new ConditionVariable();
+                    if (config.service == null) {
+                        config.service = name;
+                    }
+                    _brokerThread = new TransportBrokerThread(config.context, config.appId, config.service, cond);
+                    _brokerThread.start();
+                    cond.block();
+                    transport = _brokerThread.getBroker();
+                    if (autoStart) {
+                        start();
+                    }
+                } else {
+                    enterLegacyMode("Router service is not trusted. Entering legacy mode");
+                }
+            }
+        });
     }
 
     public void start(){
+        Log.d(TAG, "TransportManager start got called; transport=" + transport);
         if(transport != null){
             transport.start();
         }else if(legacyBluetoothTransport != null){
@@ -206,6 +229,8 @@ public class TransportManager {
         }else if(legacyBluetoothTransport != null){
             byte[] data = packet.constructPacket();
             legacyBluetoothTransport.write(data, 0, data.length);
+        } else {
+            Log.e(TAG, "sendPacket: nowhere to send..");
         }
     }
 
@@ -277,6 +302,71 @@ public class TransportManager {
             if(packet!=null){
                 transportListener.onPacketReceived((SdlPacket)packet);
             }
+        }
+    }
+
+    private class TransportBrokerThread extends Thread {
+        private boolean _connected;
+        private TransportBrokerImpl _broker;
+        final Context _context;
+        final String _appId;
+        final ComponentName _service;
+        Looper _threadLooper;
+        ConditionVariable mCond;
+
+        public TransportBrokerThread(Context context, String appId, ComponentName service, ConditionVariable cond) {
+            super();
+            this._context = context;
+            this._appId = appId;
+            this._service = service;
+            mCond = cond;
+        }
+
+        public void startConnection() {
+            synchronized(this) {
+                _connected = false;
+                if (_broker != null) {
+                    try {
+                        _broker.start();
+                    } catch(Exception e) {
+                        Log.e(TAG, "Error starting Transport: " + e.getMessage());
+                    }
+                }
+            }
+        }
+
+        @TargetApi(18)
+        public synchronized void cancel() {
+            if (_broker == null) {
+                _broker.stop();
+                _broker = null;
+            }
+            _connected = false;
+            if (_threadLooper != null) {
+                _threadLooper.quitSafely();
+                _threadLooper = null;
+            }
+        }
+
+        @Override
+        public void run() {
+            Looper.prepare();
+            if (_broker == null) {
+                synchronized(this) {
+                    _broker = new TransportBrokerImpl(_context, _appId, _service);
+                    this.notify();
+                }
+                _threadLooper = Looper.myLooper();
+                mCond.open();
+                Looper.loop();
+            } else {
+                mCond.open();
+            }
+
+        }
+
+        public final TransportBrokerImpl getBroker() {
+            return _broker;
         }
     }
 
