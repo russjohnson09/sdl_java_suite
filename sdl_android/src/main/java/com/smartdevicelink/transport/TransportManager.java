@@ -32,6 +32,8 @@
 
 package com.smartdevicelink.transport;
 
+import android.bluetooth.BluetoothDevice;
+import android.content.BroadcastReceiver;
 import android.annotation.TargetApi;
 import android.content.ComponentName;
 import android.content.Context;
