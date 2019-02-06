@@ -1150,8 +1150,10 @@ public class SdlProtocol {
         public void onTransportDisconnected(String info, TransportRecord disconnectedTransport, List<TransportRecord> connectedTransports) {
             if (disconnectedTransport == null) {
                 Log.d(TAG, "onTransportDisconnected");
-                transportManager.close(iSdlProtocol.getSessionId());
-                iSdlProtocol.shutdown("No transports left connected");
+                if (transportManager != null && iSdlProtocol != null) {
+                    transportManager.close(iSdlProtocol.getSessionId());
+                    iSdlProtocol.shutdown("No transports left connected");
+                }
                 return;
             } else {
                 Log.d(TAG, "onTransportDisconnected - " + disconnectedTransport.getType().name());
