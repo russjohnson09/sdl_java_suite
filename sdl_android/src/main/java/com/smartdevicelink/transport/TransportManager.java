@@ -102,7 +102,7 @@ public class TransportManager {
         validator.validateAsync(new RouterServiceValidator.ValidationStatusCallback() {
             @Override
             public void onFinishedValidation(boolean valid, ComponentName name) {
-                Log.d(TAG, "onFinishedValidation valid=" + valid + "; name=" + name);
+                Log.d(TAG, "onFinishedValidation valid=" + valid + "; name=" + ((name == null)? "null" : name.getPackageName()));
                 if (valid) {
                     ConditionVariable cond = new ConditionVariable();
                     if (config.service == null) {

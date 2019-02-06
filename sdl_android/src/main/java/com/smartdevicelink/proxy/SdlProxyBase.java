@@ -738,8 +738,7 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 	 */
 	public SdlProxyBase(proxyListenerType listener, Context context, String appName,String shortAppName, Boolean isMediaApp, Language languageDesired, Language hmiDisplayLanguageDesired, Vector<AppHMIType> appType, String appID,
 						BaseTransportConfig transportConfig, Vector<String> vrSynonyms, Vector<TTSChunk> ttsName, TemplateColorScheme dayColorScheme, TemplateColorScheme nightColorScheme) throws SdlException {
-		// turn off enableAdvancedLifecycleManagement by default. This does some trick for PLS-4531.
-		performBaseCommon(listener, null, false, appName, ttsName, shortAppName, vrSynonyms, isMediaApp,
+		performBaseCommon(listener, null, true, appName, ttsName, shortAppName, vrSynonyms, isMediaApp,
 				null, languageDesired, hmiDisplayLanguageDesired, appType, appID, null, dayColorScheme,nightColorScheme, false, false, null, null,  transportConfig);
 		_appContext = context;
 	}
@@ -3754,7 +3753,7 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 				sendBroadcastIntent(sendIntent);
 				_isAppInterfaceRegistered = false;
 
-				if (_advancedLifecycleManagementEnabled) {
+				if (_advancedLifecycleManagementEnabled && _transportConfig.isAutoRecycleEnabled()) {
 					// This requires the proxy to be cycled
                     cycleProxy(SdlDisconnectedReason.convertAppInterfaceUnregisteredReason(msg.getReason()));
                 } else {
