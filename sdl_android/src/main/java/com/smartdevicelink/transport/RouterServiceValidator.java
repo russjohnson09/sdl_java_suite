@@ -239,6 +239,11 @@ public class RouterServiceValidator {
 		}
 		if (callback != null) {
 			callback.onFinishedValidation(valid, service);
+			if (!valid) {
+				// make sure we clear up the Preference
+				ServiceNameLoader serviceNameLoader = new ServiceNameLoader(this.context);
+				serviceNameLoader.clear();
+			}
 		}
 	}
 	/**
@@ -270,6 +275,7 @@ public class RouterServiceValidator {
 			serviceNameLoader = new ServiceNameLoader(contexts[0]);
 			if (serviceNameLoader.isValid()) {
 				RouterServiceValidator.this.service = serviceNameLoader.getServiceName();
+				Log.d(TAG, "serviceNameLoader returns " + serviceNameLoader.getServiceName());
 				return serviceNameLoader.getServiceName();
 			}
 
@@ -296,6 +302,7 @@ public class RouterServiceValidator {
 								Log.d(TAG, "SdlRouterStatusProvider returns service=" + service + "; connected=" + connected);
 								if (isLast && mCallback != null) {
 									mCallback.onFailed();
+									serviceNameLoader.clear();
 								}
 							}
 						}
@@ -327,49 +334,63 @@ public class RouterServiceValidator {
 			}
 		}
 
-		class ServiceNameLoader {
-			static final String prefName = "RouterServiceValidator.FindRouterTask";
-			static final String packageKey = "packageName";
-			static final String classKey = "className";
-			static final String tsKey = "timestamp";
-			final int _validSpan = 300;
-			ComponentName _serviceName;
-			long _timeStamp;
+	}
 
-			public ServiceNameLoader(String packageName, String className, long timeStamp) {
-				_serviceName = new ComponentName(packageName, className);
-				_timeStamp = timeStamp;
-			}
-			public ServiceNameLoader(Context context) {
-				SharedPreferences pref = context.getSharedPreferences(prefName, Context.MODE_PRIVATE);
-				String packageName = pref.getString(packageKey, "");
-				String className = pref.getString(classKey, "");
-				_serviceName = new ComponentName(packageName, className);
-				_timeStamp = pref.getLong(tsKey, 0);
-			}
+	class ServiceNameLoader {
+		static final String prefName = "RouterServiceValidator.FindRouterTask";
+		static final String packageKey = "packageName";
+		static final String classKey = "className";
+		static final String tsKey = "timestamp";
+		final int _validSpan = 100;
+		ComponentName _serviceName;
+		long _timeStamp;
+		Context mContext;
 
-			public ComponentName getServiceName() {
-				return _serviceName;
-			}
-			public void setServiceName(ComponentName name) {
-				_serviceName = name;
-			}
-			public long getTimeStamp() {
-				return _timeStamp;
-			}
+		public ServiceNameLoader(String packageName, String className, long timeStamp) {
+			_serviceName = new ComponentName(packageName, className);
+			_timeStamp = timeStamp;
+		}
+		public ServiceNameLoader(Context context) {
+			SharedPreferences pref = context.getSharedPreferences(prefName, Context.MODE_PRIVATE);
+			String packageName = pref.getString(packageKey, "");
+			String className = pref.getString(classKey, "");
+			_serviceName = new ComponentName(packageName, className);
+			_timeStamp = pref.getLong(tsKey, 0);
+			mContext = context;
+		}
 
-			public void save(Context context) {
-				SharedPreferences pref = context.getSharedPreferences(prefName, Context.MODE_PRIVATE);
+		public ComponentName getServiceName() {
+			return _serviceName;
+		}
+		public void setServiceName(ComponentName name) {
+			_serviceName = name;
+		}
+		public long getTimeStamp() {
+			return _timeStamp;
+		}
+
+		public void save(Context context) {
+			SharedPreferences pref = context.getSharedPreferences(prefName, Context.MODE_PRIVATE);
+			SharedPreferences.Editor editor = pref.edit();
+			editor.putString(packageKey, _serviceName.getPackageName());
+			editor.putString(classKey, _serviceName.getClassName());
+			_timeStamp = System.currentTimeMillis() / 1000;
+			editor.putLong(tsKey, _timeStamp);
+			editor.apply();
+		}
+
+		public boolean isValid() {
+			return (_timeStamp != 0 && System.currentTimeMillis() / 1000 - _timeStamp < _validSpan);
+		}
+
+		public void clear() {
+			if (mContext != null) {
+				SharedPreferences pref = mContext.getSharedPreferences(prefName, Context.MODE_PRIVATE);
 				SharedPreferences.Editor editor = pref.edit();
-				editor.putString(packageKey, _serviceName.getPackageName());
-				editor.putString(classKey, _serviceName.getClassName());
-				_timeStamp = System.currentTimeMillis() / 1000;
-				editor.putLong(tsKey, _timeStamp);
+				editor.putString(packageKey, "");
+				editor.putString(classKey, "");
+				editor.putLong(tsKey, 0);
 				editor.apply();
-			}
-
-			public boolean isValid() {
-				return (_timeStamp != 0 && System.currentTimeMillis() / 1000 - _timeStamp < _validSpan);
 			}
 		}
 	}

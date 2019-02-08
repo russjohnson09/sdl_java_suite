@@ -1136,7 +1136,7 @@ public class SdlProtocol {
             Log.d(TAG, "onTransportConnected");
             //In the future we should move this logic into the Protocol Layer
             TransportRecord transportRecord = getTransportForSession(SessionType.RPC);
-            if(transportRecord == null && !requestedSession){ //There is currently no transport registered
+            if(transportRecord == null && !requestedSession && transportManager != null){ //There is currently no transport registered
                 requestedSession = true;
                 transportManager.requestNewSession(getPreferredTransport(requestedPrimaryTransports,connectedTransports));
             }
