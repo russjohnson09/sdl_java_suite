@@ -1136,7 +1136,7 @@ public class SdlProtocol {
             Log.d(TAG, "onTransportConnected");
             //In the future we should move this logic into the Protocol Layer
             TransportRecord transportRecord = getTransportForSession(SessionType.RPC);
-            if(transportRecord == null && !requestedSession){ //There is currently no transport registered
+            if(transportRecord == null && !requestedSession && transportManager != null){ //There is currently no transport registered
                 requestedSession = true;
                 transportManager.requestNewSession(getPreferredTransport(requestedPrimaryTransports,connectedTransports));
             }
@@ -1150,8 +1150,10 @@ public class SdlProtocol {
         public void onTransportDisconnected(String info, TransportRecord disconnectedTransport, List<TransportRecord> connectedTransports) {
             if (disconnectedTransport == null) {
                 Log.d(TAG, "onTransportDisconnected");
-                transportManager.close(iSdlProtocol.getSessionId());
-                iSdlProtocol.shutdown("No transports left connected");
+                if (transportManager != null && iSdlProtocol != null) {
+                    transportManager.close(iSdlProtocol.getSessionId());
+                    iSdlProtocol.shutdown("No transports left connected");
+                }
                 return;
             } else {
                 Log.d(TAG, "onTransportDisconnected - " + disconnectedTransport.getType().name());
