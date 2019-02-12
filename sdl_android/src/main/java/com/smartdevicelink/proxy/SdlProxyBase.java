@@ -4610,6 +4610,20 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
         }
     }
 
+    public void startVideoStreamAsync(boolean isEncrypted, VideoStreamingParameters parameters, StartVideoStreamCallback callback) {
+        if (sdlSession == null) {
+            DebugTool.logWarning("SdlSession is not created yet.");
+            return;
+        }
+        if (!sdlSession.getIsConnected()) {
+            DebugTool.logWarning("Connection is not available.");
+            return;
+        }
+
+        sdlSession.setDesiredVideoParams(parameters);
+
+        tryStartVideoStreamAsync(isEncrypted, parameters, callback);
+    }
     /**
      *Closes the opened video service (serviceType 11)
      *@return true if the video service is closed successfully, return false otherwise
@@ -4819,6 +4833,35 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
         return null;
     }
 
+    private void tryStartVideoStreamAsync(boolean isEncrypted, VideoStreamingParameters parameters, StartVideoStreamCallback callback) {
+        if (sdlSession == null) {
+            DebugTool.logWarning("SdlSession is not created yet.");
+            return;
+        }
+        if(protocolVersion!= null && protocolVersion.getMajor() >= 5 && !_systemCapabilityManager.isCapabilitySupported(SystemCapabilityType.VIDEO_STREAMING)){
+            DebugTool.logWarning("Module doesn't support video streaming.");
+            return;
+        }
+        if (parameters == null) {
+            DebugTool.logWarning("Video parameters were not supplied.");
+            return;
+        }
+        mStartVdieoStreamCallback = callback;
+        sdlSession.setDesiredVideoParams(parameters);
+
+        navServiceStartResponseReceived = false;
+        navServiceStartResponse = false;
+        navServiceStartRejectedParams = null;
+
+        sdlSession.startService(SessionType.NAV, sdlSession.getSessionId(), isEncrypted);
+    }
+
+    public interface StartVideoStreamCallback {
+        void onStarted();
+        void onFailed();
+    }
+
+    private StartVideoStreamCallback mStartVdieoStreamCallback;
 	/**
 	 *Starts the MediaCodec encoder utilized in conjunction with the Surface returned via the createOpenGLInputSurface method
 	 */
@@ -4960,12 +5003,18 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 	private void NavServiceStarted() {
 		navServiceStartResponseReceived = true;
 		navServiceStartResponse = true;
+		if (mStartVdieoStreamCallback != null) {
+		    mStartVdieoStreamCallback.onStarted();
+        }
 	}
 	
 	private void NavServiceStartedNACK(List<String> rejectedParams) {
 		navServiceStartResponseReceived = true;
 		navServiceStartResponse = false;
 		navServiceStartRejectedParams = rejectedParams;
+		if (mStartVdieoStreamCallback != null) {
+		    mStartVdieoStreamCallback.onFailed();
+        }
 	}
 	
     private void AudioServiceStarted() {
@@ -7496,27 +7545,49 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 			});
 		}
 
-		public void startVideoStreaming(Class<? extends SdlRemoteDisplay> remoteDisplayClass, VideoStreamingParameters parameters, boolean encrypted){
+		public void startVideoStreaming(final Class<? extends SdlRemoteDisplay> aRemoteDisplayClass, final VideoStreamingParameters parameters, boolean encrypted){
+		    /*--
 			streamListener = startVideoStream(encrypted,parameters);
 			if(streamListener == null){
 				Log.e(TAG, "Error starting video service");
 				return;
-			}
-			VideoStreamingCapability capability = (VideoStreamingCapability)_systemCapabilityManager.getCapability(SystemCapabilityType.VIDEO_STREAMING);
-			if(capability != null && capability.getIsHapticSpatialDataSupported()){
-				hapticManager = new HapticInterfaceManager(internalInterface);
-			}
-			this.remoteDisplayClass = remoteDisplayClass;
-			try {
-				encoder.init(context,streamListener,parameters);
-				//We are all set so we can start streaming at at this point
-				encoder.start();
-				//Encoder should be up and running
-				createRemoteDisplay(encoder.getVirtualDisplay());
-			} catch (Exception e) {
-				e.printStackTrace();
-			}
-			Log.d(TAG, parameters.toString());
+			} --*/
+		    Log.d(TAG, "about startVideoStreamingAsync");
+		    startVideoStreamAsync(encrypted, parameters, new StartVideoStreamCallback() {
+                @Override
+                public void onStarted() {
+                    Log.e(TAG, "startVideoStreamAsync onStarted");
+                    VideoStreamingParameters acceptedParams = sdlSession.getAcceptedVideoParams();
+                    if (acceptedParams != null) {
+                        streamListener = sdlSession.startVideoStream();
+                        if(streamListener == null) {
+                            Log.e(TAG, "Error starting video service");
+                            return;
+                        }
+                        VideoStreamingCapability capability = (VideoStreamingCapability)_systemCapabilityManager.getCapability(SystemCapabilityType.VIDEO_STREAMING);
+                        if(capability != null && capability.getIsHapticSpatialDataSupported()){
+                            hapticManager = new HapticInterfaceManager(internalInterface);
+                        }
+                        remoteDisplayClass = aRemoteDisplayClass;
+                        try {
+                            encoder.init(context,streamListener,parameters);
+                            //We are all set so we can start streaming at at this point
+                            encoder.start();
+                            //Encoder should be up and running
+                            createRemoteDisplay(encoder.getVirtualDisplay());
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
+                        Log.d(TAG, parameters.toString());
+                    }
+                }
+
+                @Override
+                public void onFailed() {
+                    Log.e(TAG, "startVideoStreamAsync failed");
+                }
+            });
+
 		}
 
 		public void stopStreaming(){
