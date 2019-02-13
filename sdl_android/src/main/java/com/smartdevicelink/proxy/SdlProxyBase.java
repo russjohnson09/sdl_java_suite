@@ -2448,22 +2448,41 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 					sendBroadcastIntent(sendIntent);
 				}
 				else if (functionName.equals(FunctionID.UNREGISTER_APP_INTERFACE.toString())) {
-						// UnregisterAppInterface					
-						_appInterfaceRegisterd = false;
-						synchronized(APP_INTERFACE_REGISTERED_LOCK) {
-							APP_INTERFACE_REGISTERED_LOCK.notify();
+					Log.e(TAG, "Got UNREGISTER_APP_INTERFACE message; needs to notify");
+					// UnregisterAppInterface
+					_appInterfaceRegisterd = false;
+					synchronized(APP_INTERFACE_REGISTERED_LOCK) {
+						APP_INTERFACE_REGISTERED_LOCK.notify();
+					}
+					final UnregisterAppInterfaceResponse msg = new UnregisterAppInterfaceResponse(hash);
+					msg.format(rpcSpecVersion, true);
+					Intent sendIntent = createBroadcastIntent();
+					updateBroadcastIntent(sendIntent, "RPC_NAME", FunctionID.UNREGISTER_APP_INTERFACE.toString());
+					updateBroadcastIntent(sendIntent, "TYPE", RPCMessage.KEY_RESPONSE);
+					updateBroadcastIntent(sendIntent, "SUCCESS", msg.getSuccess());
+					updateBroadcastIntent(sendIntent, "COMMENT1", msg.getInfo());
+					updateBroadcastIntent(sendIntent, "COMMENT2", msg.getResultCode().toString());
+					updateBroadcastIntent(sendIntent, "DATA",serializeJSON(msg));
+					updateBroadcastIntent(sendIntent, "CORRID", msg.getCorrelationID());
+					sendBroadcastIntent(sendIntent);
+
+					if (_callbackToUIThread) {
+						// Run in UI thread
+						_mainUIHandler.post(new Runnable() {
+							@Override
+							public void run() {
+								if (_proxyListener instanceof IProxyListener) {
+									((IProxyListener)_proxyListener).onUnregisterAppInterfaceResponse(msg);
+								}
+								onRPCResponseReceived(msg);
+							}
+						});
+					} else {
+						if (_proxyListener instanceof IProxyListener) {
+							((IProxyListener)_proxyListener).onUnregisterAppInterfaceResponse(msg);
 						}
-						final UnregisterAppInterfaceResponse msg = new UnregisterAppInterfaceResponse(hash);
-						msg.format(rpcSpecVersion, true);
-						Intent sendIntent = createBroadcastIntent();
-						updateBroadcastIntent(sendIntent, "RPC_NAME", FunctionID.UNREGISTER_APP_INTERFACE.toString());
-						updateBroadcastIntent(sendIntent, "TYPE", RPCMessage.KEY_RESPONSE);
-						updateBroadcastIntent(sendIntent, "SUCCESS", msg.getSuccess());
-						updateBroadcastIntent(sendIntent, "COMMENT1", msg.getInfo());
-						updateBroadcastIntent(sendIntent, "COMMENT2", msg.getResultCode().toString());
-						updateBroadcastIntent(sendIntent, "DATA",serializeJSON(msg));
-						updateBroadcastIntent(sendIntent, "CORRID", msg.getCorrelationID());
-						sendBroadcastIntent(sendIntent);
+						onRPCResponseReceived(msg);
+					}
 				}
 				return;
 			}
