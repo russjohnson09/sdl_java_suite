@@ -691,6 +691,11 @@ public class SdlSession implements ISdlConnectionListener, IHeartbeatMonitorList
         }
     }
 
+    @Override
+    public void onProtocolSessionStartFailed(SessionType sessionType) {
+        this.sessionListener.onProtocolSessionStartFailed(sessionType);
+    }
+
     public void clearConnection(){
         _sdlConnection = null;
     }

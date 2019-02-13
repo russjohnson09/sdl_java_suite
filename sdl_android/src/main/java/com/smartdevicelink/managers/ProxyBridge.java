@@ -3,6 +3,7 @@ package com.smartdevicelink.managers;
 import android.util.SparseArray;
 
 import com.smartdevicelink.protocol.enums.FunctionID;
+import com.smartdevicelink.protocol.enums.SessionType;
 import com.smartdevicelink.proxy.IProxyListener;
 import com.smartdevicelink.proxy.RPCMessage;
 import com.smartdevicelink.proxy.callbacks.OnServiceEnded;
@@ -557,4 +558,7 @@ public class ProxyBridge implements IProxyListener{
 	public void onOnRCStatus(OnRCStatus notification) {
 		onRPCReceived(notification);
 	}
+
+	@Override
+	public void onProtocolSessionStartFailed(SessionType sessionType) {}
 }

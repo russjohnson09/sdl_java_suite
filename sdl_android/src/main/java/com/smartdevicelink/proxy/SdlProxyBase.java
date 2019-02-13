@@ -715,6 +715,11 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 				_proxyListener.onServiceDataACK(dataSize);						
 			}
 		}
+
+		@Override
+		public void onProtocolSessionStartFailed(SessionType sessionType) {
+			((IProxyListener)_proxyListener).onProtocolSessionStartFailed(sessionType);
+		}
 	}
 
 	/**

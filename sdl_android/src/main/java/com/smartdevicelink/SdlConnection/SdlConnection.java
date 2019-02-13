@@ -476,6 +476,13 @@ public class SdlConnection implements IProtocolListener, ITransportListener {
 				session.onProtocolServiceDataACK(serviceType, dataSize, sessionID);
 			}
 		}
+
+		@Override
+		public void onProtocolSessionStartFailed(SessionType sessionType) {
+			for (SdlSession session : listenerList) {
+				session.onProtocolSessionStartFailed(sessionType);
+			}
+		}
 	}
 		
 	public int getRegisterCount() {
@@ -616,5 +623,10 @@ public class SdlConnection implements IProtocolListener, ITransportListener {
 	@Override
 	public void onProtocolServiceDataACK(SessionType serviceType, int dataSize, byte sessionID) {
 		_connectionListener.onProtocolServiceDataACK(serviceType, dataSize, sessionID);
+	}
+
+	@Override
+	public void onProtocolSessionStartFailed(SessionType sessionType) {
+		_connectionListener.onProtocolSessionStartFailed(sessionType);
 	}
 }
