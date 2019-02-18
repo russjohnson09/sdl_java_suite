@@ -161,7 +161,9 @@ public class SdlProtocol {
     }
 
     public void setProtocolSessionStarted(boolean started) {
-        isProtocolSessionStarted = started;
+        synchronized (this) {
+            isProtocolSessionStarted = started;
+        }
     }
     /**
      * Retrieves the max payload size for a packet to be sent to the module
@@ -1154,8 +1156,10 @@ public class SdlProtocol {
                         long startTime = System.currentTimeMillis();
                         while (System.currentTimeMillis() <= startTime + integers[0]) {
                             // check to see if protocol session has been started
-                            if (isProtocolSessionStarted) {
-                                return true;
+                            synchronized (SdlProtocol.this) {
+                                if (isProtocolSessionStarted) {
+                                    return true;
+                                }
                             }
                             // if not sleep.
                             try {
@@ -1164,7 +1168,7 @@ public class SdlProtocol {
                                 break;
                             }
                         }
-                        return false;
+                        return isProtocolSessionStarted;
                     }
 
                     @Override
@@ -1172,6 +1176,7 @@ public class SdlProtocol {
                         super.onPostExecute(succeeded);
                         if (!succeeded) {
                             if (iSdlProtocol != null) {
+                                Log.e(TAG, "onProtocolSessionStartFailed!");
                                 iSdlProtocol.onProtocolSessionStartFailed(SessionType.RPC);
                             }
                         }
