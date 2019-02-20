@@ -32,6 +32,7 @@
 
 package com.smartdevicelink.protocol;
 
+import android.os.AsyncTask;
 import android.os.Bundle;
 import android.support.annotation.NonNull;
 import android.util.Log;
@@ -133,6 +134,7 @@ public class SdlProtocol {
     Map<TransportType, Bundle> secondaryTransportParams;
     TransportRecord connectedPrimaryTransport;
 
+    private boolean isProtocolSessionStarted;
 
     @SuppressWarnings("ConstantConditions")
     public SdlProtocol(@NonNull ISdlProtocol iSdlProtocol, @NonNull MultiplexTransportConfig config) {
@@ -156,6 +158,12 @@ public class SdlProtocol {
         Log.d(TAG, "start has been moved to TransportManager.ctor");
         //transportManager.start();
 
+    }
+
+    public void setProtocolSessionStarted(boolean started) {
+        synchronized (this) {
+            isProtocolSessionStarted = started;
+        }
     }
     /**
      * Retrieves the max payload size for a packet to be sent to the module
@@ -1139,6 +1147,41 @@ public class SdlProtocol {
             if(transportRecord == null && !requestedSession && transportManager != null){ //There is currently no transport registered
                 requestedSession = true;
                 transportManager.requestNewSession(getPreferredTransport(requestedPrimaryTransports,connectedTransports));
+
+                // pay attention to timeout
+                final Integer WAIT_MSEC = 3000;
+                new AsyncTask<Integer, Void, Boolean>() {
+                    @Override
+                    protected Boolean doInBackground(Integer... integers) {
+                        long startTime = System.currentTimeMillis();
+                        while (System.currentTimeMillis() <= startTime + integers[0]) {
+                            // check to see if protocol session has been started
+                            synchronized (SdlProtocol.this) {
+                                if (isProtocolSessionStarted) {
+                                    return true;
+                                }
+                            }
+                            // if not sleep.
+                            try {
+                                Thread.sleep(100);
+                            } catch(InterruptedException e) {
+                                break;
+                            }
+                        }
+                        return isProtocolSessionStarted;
+                    }
+
+                    @Override
+                    protected void onPostExecute(Boolean succeeded) {
+                        super.onPostExecute(succeeded);
+                        if (!succeeded) {
+                            if (iSdlProtocol != null) {
+                                Log.e(TAG, "onProtocolSessionStartFailed!");
+                                iSdlProtocol.onProtocolSessionStartFailed(SessionType.RPC);
+                            }
+                        }
+                    }
+                }.execute(WAIT_MSEC);
             }
             onTransportsConnectedUpdate(connectedTransports);
             if(DebugTool.isDebugEnabled()){

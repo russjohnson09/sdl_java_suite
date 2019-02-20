@@ -216,6 +216,12 @@ public class SdlSession2 extends SdlSession implements ISdlProtocol{
         }
     }
 
+    @Override
+    public void onProtocolSessionStarted(SessionType sessionType, byte sessionID, byte version, String correlationID, int hashID, boolean isEncrypted) {
+        super.onProtocolSessionStarted(sessionType, sessionID, version, correlationID, hashID, isEncrypted);
+        this.sdlProtocol.setProtocolSessionStarted(true);
+    }
+
     /* Not supported methods from IProtocolListener */
     @Override
     public void sendHeartbeat(IHeartbeatMonitor monitor) {/* Not supported */ }

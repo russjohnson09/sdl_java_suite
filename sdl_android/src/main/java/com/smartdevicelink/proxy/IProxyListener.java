@@ -1,5 +1,6 @@
 package com.smartdevicelink.proxy;
 
+import com.smartdevicelink.protocol.enums.SessionType;
 import com.smartdevicelink.proxy.interfaces.IProxyListenerBase;
 import com.smartdevicelink.proxy.rpc.OnAppInterfaceUnregistered;
 import com.smartdevicelink.proxy.rpc.RegisterAppInterfaceResponse;
@@ -15,5 +16,6 @@ public interface IProxyListener extends IProxyListenerBase{
 	public void onOnAppInterfaceUnregistered(OnAppInterfaceUnregistered notification);
 	
 	public void onUnregisterAppInterfaceResponse(UnregisterAppInterfaceResponse response);
-	
+
+	public void onProtocolSessionStartFailed(SessionType sessiontype);
 }
