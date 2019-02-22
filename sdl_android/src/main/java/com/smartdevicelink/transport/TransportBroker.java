@@ -677,6 +677,9 @@ public class TransportBroker {
     @SuppressLint("InlinedApi")
     private boolean sendBindingIntent() {
         if (this.routerPackage != null && this.routerClassName != null) {
+            if (isBound) {
+                return true; // do NOT bind twice.
+            }
             Log.d(TAG, "Sending bind request to " + this.routerPackage + " - " + this.routerClassName);
             DebugConst.connectRouter(this.routerPackage + ":" + this.routerClassName);
             Intent bindingIntent = new Intent();
