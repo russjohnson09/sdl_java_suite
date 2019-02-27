@@ -108,12 +108,16 @@ public class TransportManager {
                     if (config.service == null) {
                         config.service = name;
                     }
-                    _brokerThread = new TransportBrokerThread(config.context, config.appId, config.service, cond);
-                    _brokerThread.start();
-                    cond.block();
-                    transport = _brokerThread.getBroker();
-                    if (autoStart) {
-                        start();
+                    if (_brokerThread == null) {
+                        _brokerThread = new TransportBrokerThread(config.context, config.appId, config.service, cond);
+                        _brokerThread.start();
+                        cond.block();
+                        transport = _brokerThread.getBroker();
+                        if (autoStart) {
+                            start();
+                        }
+                    } else {
+                        Log.e(TAG, "_brokerThread already exists; do NOT instantiate it twice!");
                     }
                 } else {
                     enterLegacyMode("Router service is not trusted. Entering legacy mode");
@@ -138,6 +142,10 @@ public class TransportManager {
         }else if(legacyBluetoothTransport != null){
             legacyBluetoothTransport.stop();
             legacyBluetoothTransport = null;
+        }
+        if (_brokerThread != null) {
+            _brokerThread.cancel();
+            _brokerThread = null;
         }
     }
 
@@ -387,13 +395,13 @@ public class TransportManager {
                 contextWeakReference.get().registerReceiver(legacyDisconnectReceiver,new IntentFilter(BluetoothDevice.ACTION_ACL_DISCONNECTED) );
             }
         }else{
-            new Handler().postDelayed(new Runnable() {
+            new Handler().post(new Runnable() {
                 @Override
                 public void run() {
                     transportListener.onError(info + " - Legacy mode unacceptable; shutting down.");
 
                 }
-            },500);
+            });
         }
     }
 
