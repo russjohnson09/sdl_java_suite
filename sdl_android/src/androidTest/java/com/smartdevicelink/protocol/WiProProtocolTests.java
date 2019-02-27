@@ -59,7 +59,8 @@ public class WiProProtocolTests extends AndroidTestCase2 {
 		public void onResetIncomingHeartbeat(SessionType sessionType,byte sessionID) {}
 		@Override
 		public void onProtocolError(String info, Exception e) {}
-
+		@Override
+		public void onProtocolSessionStartFailed(SessionType sessionType) {}
 	};
 	public static class DidReceiveListener implements IProtocolListener{
 		boolean didReceive = false;
@@ -99,6 +100,8 @@ public class WiProProtocolTests extends AndroidTestCase2 {
 		public void onResetIncomingHeartbeat(SessionType sessionType,byte sessionID) {}
 		@Override
 		public void onProtocolError(String info, Exception e) {}
+		@Override
+		public void onProtocolSessionStartFailed(SessionType sessionType) {}
 	};
 	DidReceiveListener onProtocolMessageReceivedListener = new DidReceiveListener();
 	

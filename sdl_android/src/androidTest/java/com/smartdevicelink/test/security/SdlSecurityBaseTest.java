@@ -114,6 +114,10 @@ public class SdlSecurityBaseTest extends AndroidTestCase2 {
 				byte sessionID) {
 
 		}
+		@Override
+		public void onProtocolSessionStartFailed(SessionType sessiontype) {
+
+		}
 
 	}
 	

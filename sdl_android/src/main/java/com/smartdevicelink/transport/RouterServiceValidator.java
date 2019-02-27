@@ -10,6 +10,7 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import android.annotation.TargetApi;
 import android.app.ActivityManager;
 import android.app.ActivityManager.RunningServiceInfo;
 import android.bluetooth.BluetoothAdapter;
@@ -48,8 +49,46 @@ public class RouterServiceValidator {
 
 	private static final String REQUEST_PREFIX = "https://woprjr.smartdevicelink.com/api/1/applications/queryTrustedRouters";
 
-	private static final String DEFAULT_APP_LIST = "{\"response\": {\"com.livio.sdl\" : { \"versionBlacklist\":[] }, \"com.lexus.tcapp\" : { \"versionBlacklist\":[] }, \"com.toyota.tcapp\" : { \"versionBlacklist\": [] } , \"com.sdl.router\":{\"versionBlacklist\": [] },\"com.ford.fordpass\" : { \"versionBlacklist\":[] }, \"com.xevo.cts.gcapp.dev\" : { \"versionBlacklist\":[] }, \"com.xevo.capp.dev\" : { \"versionBlacklist\":[] }, \"jp.co.toyota.sdl.capp.toyota\" : { \"versionBlacklist\":[] }, \"jp.co.toyota.sdl.capp.lexus\" : { \"versionBlacklist\":[] }, \"com.xevokk.jdai.capp\" : { \"versionBlacklist\":[] }, \"cn.co.toyota.sdl.capp.toyota\" : { \"versionBlacklist\":[] }, \"cn.co.toyota.sdl.capp.lexus\" : { \"versionBlacklist\":[] }, \"com.xevokk.jsuz.capp\" : { \"versionBlacklist\":[] }, \"jp.co.daihatsu.dconnect\" : { \"versionBlacklist\":[] }, \"app.mytoyota.toyota.com.mytoyota\" : { \"versionBlacklist\":[] }, \"app.mylexus.lexus.com.mylexus\" : { \"versionBlacklist\":[] }, \"au.com.toyota.mytoyota.app\" : { \"versionBlacklist\":[] }, \"au.com.lexus.mylexus.app\" : { \"versionBlacklist\":[] }, \"com.xevo.samplecapp\" : { \"versionBlacklist\":[] } }}";
-	private static final String ENFORCE_APP_LIST = ", \"com.xevo.cts.gcapp.dev\" : { \"versionBlacklist\":[] }, \"com.xevo.capp.dev\" : { \"versionBlacklist\":[] }, \"jp.co.toyota.sdl.capp.toyota\" : { \"versionBlacklist\":[] }, \"jp.co.toyota.sdl.capp.lexus\" : { \"versionBlacklist\":[] }, \"com.xevokk.jdai.capp\" : { \"versionBlacklist\":[] }, \"cn.co.toyota.sdl.capp.toyota\" : { \"versionBlacklist\":[] }, \"cn.co.toyota.sdl.capp.lexus\" : { \"versionBlacklist\":[] }, \"com.xevokk.jsuz.capp\" : { \"versionBlacklist\":[] }, \"jp.co.daihatsu.dconnect\" : { \"versionBlacklist\":[] }, \"app.mytoyota.toyota.com.mytoyota\" : { \"versionBlacklist\":[] }, \"app.mylexus.lexus.com.mylexuss\" : { \"versionBlacklist\":[] }, \"au.com.toyota.mytoyota.app\" : { \"versionBlacklist\":[] }, \"au.com.lexus.mylexus.app\" : { \"versionBlacklist\":[] }, \"com.xevo.samplecapp\" : { \"versionBlacklist\":[] } }}";
+	private static final String DEFAULT_APP_LIST = "{\"response\": {"
+			+ "\"com.livio.sdl\" : { \"versionBlacklist\":[] }, "
+			+ "\"com.lexus.tcapp\" : { \"versionBlacklist\":[] }, "
+			+ "\"com.toyota.tcapp\" : { \"versionBlacklist\": [] } , "
+			+ "\"com.sdl.router\":{\"versionBlacklist\": [] },"
+			+ "\"com.ford.fordpass\" : { \"versionBlacklist\":[] }, "
+			+ "\"com.xevo.cts.gcapp.dev\" : { \"versionBlacklist\":[] }, "
+			+ "\"com.xevo.capp.dev\" : { \"versionBlacklist\":[] }, "
+			+ "\"jp.co.toyota.sdl.capp.toyota\" : { \"versionBlacklist\":[] }, "
+			+ "\"jp.co.toyota.sdl.capp.lexus\" : { \"versionBlacklist\":[] }, "
+			+ "\"com.xevokk.jdai.capp\" : { \"versionBlacklist\":[] }, "
+			+ "\"cn.co.toyota.sdl.capp.toyota\" : { \"versionBlacklist\":[] }, "
+			+ "\"cn.co.toyota.sdl.capp.lexus\" : { \"versionBlacklist\":[] }, "
+			+ "\"com.xevokk.jsuz.capp\" : { \"versionBlacklist\":[] }, "
+			+ "\"jp.co.daihatsu.dconnect\" : { \"versionBlacklist\":[] }, "
+			+ "\"app.mytoyota.toyota.com.mytoyota\" : { \"versionBlacklist\":[] }, "
+			+ "\"app.mylexus.lexus.com.mylexus\" : { \"versionBlacklist\":[] }, "
+			+ "\"app.mytoyota.toyota.com.mytoyota.test\" : { \"versionBlacklist\":[] }, "
+			+ "\"app.mylexus.lexus.com.mylexus.test\" : { \"versionBlacklist\":[] }, "
+			+ "\"au.com.toyota.mytoyota.app\" : { \"versionBlacklist\":[] }, "
+			+ "\"au.com.lexus.mylexus.app\" : { \"versionBlacklist\":[] }, "
+			+ "\"com.xevo.samplecapp\" : { \"versionBlacklist\":[] } }}";
+	private static final String ENFORCE_APP_LIST = ", "
+			+ "\"com.xevo.cts.gcapp.dev\" : { \"versionBlacklist\":[] }, "
+			+ "\"com.xevo.capp.dev\" : { \"versionBlacklist\":[] }, "
+			+ "\"jp.co.toyota.sdl.capp.toyota\" : { \"versionBlacklist\":[] }, "
+			+ "\"jp.co.toyota.sdl.capp.lexus\" : { \"versionBlacklist\":[] }, "
+			+ "\"com.xevokk.jdai.capp\" : { \"versionBlacklist\":[] }, "
+			+ "\"cn.co.toyota.sdl.capp.toyota\" : { \"versionBlacklist\":[] }, "
+			+ "\"cn.co.toyota.sdl.capp.lexus\" : { \"versionBlacklist\":[] }, "
+			+ "\"com.xevokk.jsuz.capp\" : { \"versionBlacklist\":[] }, "
+			+ "\"jp.co.daihatsu.dconnect\" : { \"versionBlacklist\":[] }, "
+			+ "\"app.mytoyota.toyota.com.mytoyota\" : { \"versionBlacklist\":[] }, "
+			+ "\"app.mylexus.lexus.com.mylexus\" : { \"versionBlacklist\":[] }, "
+			+ "\"app.mytoyota.toyota.com.mytoyota.test\" : { \"versionBlacklist\":[] }, "
+			+ "\"app.mylexus.lexus.com.mylexus.test\" : { \"versionBlacklist\":[] }, "
+			+ "\"au.com.toyota.mytoyota.app\" : { \"versionBlacklist\":[] }, "
+			+ "\"au.com.lexus.mylexus.app\" : { \"versionBlacklist\":[] }, "
+			+ "\"com.xevo.samplecapp\" : { \"versionBlacklist\":[] } }}";
+
 	static final boolean USE_ENFORCE_APPLIST = true;
 
 	private static final String JSON_RESPONSE_OBJECT_TAG = "response";
@@ -300,7 +339,7 @@ public class RouterServiceValidator {
 								}
 							} else {
 								Log.d(TAG, "SdlRouterStatusProvider returns service=" + service + "; connected=" + connected);
-								if (isLast && mCallback != null) {
+								if (isLast && mCallback != null && !serviceNameLoader.isValid()) {
 									mCallback.onFailed();
 									serviceNameLoader.clear();
 								}
@@ -369,6 +408,7 @@ public class RouterServiceValidator {
 			return _timeStamp;
 		}
 
+		@TargetApi(9)
 		public void save(Context context) {
 			SharedPreferences pref = context.getSharedPreferences(prefName, Context.MODE_PRIVATE);
 			SharedPreferences.Editor editor = pref.edit();
@@ -383,6 +423,7 @@ public class RouterServiceValidator {
 			return (_timeStamp != 0 && System.currentTimeMillis() / 1000 - _timeStamp < _validSpan);
 		}
 
+		@TargetApi(9)
 		public void clear() {
 			if (mContext != null) {
 				SharedPreferences pref = mContext.getSharedPreferences(prefName, Context.MODE_PRIVATE);

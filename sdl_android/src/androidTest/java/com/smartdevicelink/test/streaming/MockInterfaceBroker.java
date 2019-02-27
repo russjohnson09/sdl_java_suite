@@ -68,4 +68,6 @@ public class MockInterfaceBroker implements ISdlConnectionListener {
 			byte sessionID) {
 
 	}
+	@Override
+	public void onProtocolSessionStartFailed(SessionType sessionType) {}
 }
