@@ -879,7 +879,6 @@ public class SdlProtocol {
                     }
                     DebugTool.logWarning(builder.toString());
                 }
-
             }
         }
 
@@ -1141,10 +1140,11 @@ public class SdlProtocol {
 
         @Override
         public void onTransportConnected(List<TransportRecord> connectedTransports) {
-            Log.d(TAG, "onTransportConnected");
+            Log.d(TAG, "onTransportConnected: connectedTransports size=" + connectedTransports.size());
             //In the future we should move this logic into the Protocol Layer
             TransportRecord transportRecord = getTransportForSession(SessionType.RPC);
-            if(transportRecord == null && !requestedSession && transportManager != null){ //There is currently no transport registered
+            // do NOT request new session if there's no connectedTransport...
+            if(transportRecord == null && !requestedSession && transportManager != null && connectedTransports.size() > 0){ //There is currently no transport registered
                 requestedSession = true;
                 transportManager.requestNewSession(getPreferredTransport(requestedPrimaryTransports,connectedTransports));
 
@@ -1184,9 +1184,7 @@ public class SdlProtocol {
                 }.execute(WAIT_MSEC);
             }
             onTransportsConnectedUpdate(connectedTransports);
-            if(DebugTool.isDebugEnabled()){
-                printActiveTransports();
-            }
+            printActiveTransports();
         }
 
         @Override
