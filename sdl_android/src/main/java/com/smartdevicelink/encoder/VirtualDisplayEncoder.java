@@ -212,6 +212,8 @@ public class VirtualDisplayEncoder {
 
                     int callCount = 0;
                     int totalDataSize = 0;
+                    long mLastTime = 0;
+                    int mFpsCount = 0;
 
                     @Override
                     public void onInputBufferAvailable(MediaCodec codec, int index) {
@@ -229,6 +231,10 @@ public class VirtualDisplayEncoder {
                             DebugConst.log(TAG, "onOutputBufferAvailable /callCount:" + callCount);
                         }
                         callCount++;
+                        mFpsCount++;
+                        if(mLastTime == 0){
+                            mLastTime = System.currentTimeMillis();
+                        }
                          try {
                             ByteBuffer encodedData = codec.getOutputBuffer(index);
                             if (encodedData != null) {
@@ -256,6 +262,17 @@ public class VirtualDisplayEncoder {
                                         totalDataSize += dataToWrite.length;
                                         DebugConst.totalDataSize(totalDataSize);
                                         mOutputListener.sendFrame(dataToWrite, 0, dataToWrite.length, info.presentationTimeUs);
+
+                                        long nowTime = System.currentTimeMillis();
+                                        if(mLastTime + 1000 < nowTime){
+                                            long durationTime = nowTime - mLastTime;
+                                            double fps = (double) (mFpsCount) / ((double) durationTime / 1000);
+                                            String sFps = String.format("FPS:%.2f",fps);
+                                            DebugConst.log(TAG, "onOutputBufferAvailable /" + sFps);
+
+                                            mFpsCount = 0;
+                                            mLastTime = nowTime;
+                                        }
                                     }
                                 }
 
