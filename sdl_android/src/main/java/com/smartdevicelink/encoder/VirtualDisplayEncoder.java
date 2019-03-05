@@ -59,13 +59,13 @@ import com.smartdevicelink.localdebug.DebugConst;
 
 import java.nio.ByteBuffer;
 
-//ogawa add-s
+
 import com.android.grafika.gles.EglCore;
 import com.android.grafika.gles.FullFrameRect;
 import com.android.grafika.gles.OffscreenSurface;
 import com.android.grafika.gles.Texture2dProgram;
 import com.android.grafika.gles.WindowSurface;
-//ogawa add-e
+
 @TargetApi(19)
 @SuppressWarnings("NullableProblems")
 public class VirtualDisplayEncoder {
@@ -86,7 +86,6 @@ public class VirtualDisplayEncoder {
     //For older (<21) OS versions
     private Thread encoderThread;
 
-    //ogawa add-s
     private CaptureThread mCaptureThread;
     private EglCore mEglCore;
     private OffscreenSurface mDummySurface;
@@ -95,7 +94,6 @@ public class VirtualDisplayEncoder {
     private Surface mInterSurface;
     private FullFrameRect mFullFrameBlit;
     private WindowSurface mEncoderSurface;
-    //ogawa add-e
 
     /**
      * Initialization method for VirtualDisplayEncoder object. MUST be called before start() or shutdown()
@@ -153,28 +151,16 @@ public class VirtualDisplayEncoder {
             return;
         }
 
-        //ogawa add-s
         int Width = streamingParams.getResolution().getResolutionWidth();
         int Height = streamingParams.getResolution().getResolutionHeight();
         setupGLES(Width, Height);
-        //ogawa add-e
         synchronized (STREAMING_LOCK) {
 
             try {
-                //ogawa add-s
-                /*
-                inputSurface = prepareVideoEncoder();
-                // Create a virtual display that will output to our encoder.
-                virtualDisplay = mDisplayManager.createVirtualDisplay(TAG,
-                        streamingParams.getResolution().getResolutionWidth(), streamingParams.getResolution().getResolutionHeight(),
-                        streamingParams.getDisplayDensity(), inputSurface, DisplayManager.VIRTUAL_DISPLAY_FLAG_PRESENTATION);
-                */
-
                 mEncoderSurface = new WindowSurface(mEglCore, prepareVideoEncoder(), true);
                 virtualDisplay = mDisplayManager.createVirtualDisplay(TAG,
                         Width, Height,
                         streamingParams.getDisplayDensity(), mInterSurface, DisplayManager.VIRTUAL_DISPLAY_FLAG_PRESENTATION);
-                //ogawa add-e
                 startEncoder();
                 final ConditionVariable startCond = new ConditionVariable();
                 mCaptureThread = new CaptureThread(mEglCore, mInterSurfaceTexture, mTextureId,
@@ -206,7 +192,6 @@ public class VirtualDisplayEncoder {
             return;
         }
         try {
-            //ogawa add-s
             if (mCaptureThread != null) {
                 mCaptureThread.stopAsync();
                 try {
@@ -236,7 +221,6 @@ public class VirtualDisplayEncoder {
                 mEglCore.release();
                 mEglCore = null;
             }
-            //ogawa add-e
 
             if (encoderThread != null) {
                 encoderThread.interrupt();
@@ -253,12 +237,10 @@ public class VirtualDisplayEncoder {
                 virtualDisplay.release();
                 virtualDisplay = null;
             }
-            //ogawa add-s
             if (mEncoderSurface != null) {
                 mEncoderSurface.release();
                 mEncoderSurface = null;
             }
-            //ogawa add-e
             if (inputSurface != null) {
                 inputSurface.release();
                 inputSurface = null;
@@ -520,7 +502,6 @@ public class VirtualDisplayEncoder {
             }
         }
     }
-    //ogawa add-s
     private void setupGLES(int Width, int Height) {
         mEglCore = new EglCore(null, 0);
 
@@ -713,5 +694,4 @@ public class VirtualDisplayEncoder {
             mDestSurface.swapBuffers();
         }
     }
-    //ogawa add-e
 }
