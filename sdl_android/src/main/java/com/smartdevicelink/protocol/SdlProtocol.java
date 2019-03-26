@@ -1185,7 +1185,10 @@ public class SdlProtocol {
                                 }
                                 if (!containsTransport) {
                                     Log.e(TAG, "requestNewSession failed, but active transports do not meet with high bandwidth");
-                                    return; // do nothing.
+                                    if (iSdlProtocol != null) {
+                                        iSdlProtocol.shutdown("requestNewSession failed, but active transports do not meet with high bandwidth; shutdown the session");
+                                    }
+                                    return;
                                 }
                             }
                             if (iSdlProtocol != null) {
