@@ -1139,10 +1139,10 @@ public class SdlProtocol {
         }
 
         @Override
-        public void onTransportConnected(List<TransportRecord> connectedTransports) {
+        public void onTransportConnected(final List<TransportRecord> connectedTransports) {
             Log.d(TAG, "onTransportConnected: connectedTransports size=" + connectedTransports.size());
             //In the future we should move this logic into the Protocol Layer
-            TransportRecord transportRecord = getTransportForSession(SessionType.RPC);
+            final TransportRecord transportRecord = getTransportForSession(SessionType.RPC);
             // do NOT request new session if there's no connectedTransport...
             if(transportRecord == null && !requestedSession && transportManager != null && connectedTransports.size() > 0){ //There is currently no transport registered
                 requestedSession = true;
@@ -1175,6 +1175,22 @@ public class SdlProtocol {
                     protected void onPostExecute(Boolean succeeded) {
                         super.onPostExecute(succeeded);
                         if (!succeeded) {
+                            if (transportConfig.requiresHighBandwidth()) {
+                                boolean containsTransport = false;
+                                for (TransportRecord record: connectedTransports) {
+                                    if (record.getType().equals(TransportType.USB) || record.getType().equals(TransportType.TCP)) {
+                                        containsTransport = true;
+                                        break;
+                                    }
+                                }
+                                if (!containsTransport) {
+                                    Log.e(TAG, "requestNewSession failed, but active transports do not meet with high bandwidth");
+                                    if (iSdlProtocol != null) {
+                                        iSdlProtocol.shutdown("requestNewSession failed, but active transports do not meet with high bandwidth; shutdown the session");
+                                    }
+                                    return;
+                                }
+                            }
                             if (iSdlProtocol != null) {
                                 Log.e(TAG, "onProtocolSessionStartFailed!");
                                 iSdlProtocol.onProtocolSessionStartFailed(SessionType.RPC);
