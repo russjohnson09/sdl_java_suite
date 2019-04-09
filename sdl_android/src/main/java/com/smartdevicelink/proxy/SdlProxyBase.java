@@ -7654,14 +7654,14 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 		}
 
         private List<MotionEvent> convertTouchEvent(OnTouchEvent touchEvent){
+			List<MotionEvent> motionEventList = new ArrayList<MotionEvent>();
             List<TouchEvent> eventList = touchEvent.getEvent();
-            if (eventList == null || eventList.size() == 0) return null;
+            if (eventList == null || eventList.size() == 0) return motionEventList;
 
             TouchType touchType = touchEvent.getType();
-            if (touchType == null) { return null; }
+            if (touchType == null) { return motionEventList; }
 
             int eventListSize = eventList.size();
-            List<MotionEvent> motionEventList = new ArrayList<MotionEvent>();
             if(sdlMotionEvent == null) {
                 if (touchType == TouchType.BEGIN) {
                     sdlMotionEvent = new SdlMotionEvent();
