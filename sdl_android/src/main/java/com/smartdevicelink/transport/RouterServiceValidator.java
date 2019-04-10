@@ -5,6 +5,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Vector;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -33,6 +34,7 @@ import com.smartdevicelink.util.AndroidTools;
 import com.smartdevicelink.util.HttpRequestTask;
 import com.smartdevicelink.util.HttpRequestTask.HttpRequestTaskCallback;
 import com.smartdevicelink.util.SdlAppInfo;
+import com.smartdevicelink.util.ServiceFinder;
 
 /**
  * This class will tell us if the currently running router service is valid or not.
@@ -132,6 +134,7 @@ public class RouterServiceValidator {
 	private ComponentName service;//This is how we can save different routers over another in a waterfall method if we choose to.
 
 	private static int securityLevel = -1;
+	private final boolean usePreferenceCache = false;
 	
 	public RouterServiceValidator(Context context){
 		this.context = context;
@@ -183,7 +186,7 @@ public class RouterServiceValidator {
 			}
 		}
 		if(this.service == null){
-			Log.d(TAG, "about finding the best Router by using querySdlAppInfo");
+			Log.d(TAG, "about finding the best Router by using retrieveBestRouterServiceName");
 			retrieveBestRouterServiceName(this.context);
 			// we are retrieving; do not spin up local Router.
 			if (this.service == null) {
@@ -214,12 +217,6 @@ public class RouterServiceValidator {
 			securityLevel = getSecurityLevel(context);
 		}
 
-		if(securityLevel == MultiplexTransportConfig.FLAG_MULTI_SECURITY_OFF){ //If security isn't an issue, just return true;
-			if (callback != null) {
-				callback.onFinishedValidation(true, null);
-			}
-		}
-
 		final PackageManager pm = context.getPackageManager();
 		//Grab the package for the currently running router service. We need this call regardless of if we are in debug mode or not.
 
@@ -239,13 +236,13 @@ public class RouterServiceValidator {
 		}
 
 		if(this.service == null){
-			Log.d(TAG, "about finding the best Router by using querySdlAppInfo");
+			Log.d(TAG, "about finding the best Router by using retrieveBestRouterServiceName");
 			retrieveBestRouterServiceNameAsync(this.context, new FindConnectedRouterCallback() {
 				@Override
 				public void onFound(ComponentName component) {
-					service = component;
+					//service = component;
 					Log.d(TAG, "FindConnectedRouterCallback.onFound got called. Package=" + component);
-					checkTrustedRouter(callback, pm);
+					checkTrustedRouter(callback, pm, component);
 				}
 
 				@Override
@@ -260,13 +257,13 @@ public class RouterServiceValidator {
 			});
 		} else {
 			// already found the RouterService
-			checkTrustedRouter(callback, pm);
+			checkTrustedRouter(callback, pm, service);
 		}
 
 	}
 
-	private void checkTrustedRouter(final ValidationStatusCallback callback, final PackageManager pm) {
-		String packageName = appPackageForComponentName(service, pm);
+	private void checkTrustedRouter(final ValidationStatusCallback callback, final PackageManager pm, final ComponentName component) {
+		String packageName = appPackageForComponentName(component, pm);
 		boolean valid = false;
 
 		if(packageName!=null){//Make sure there is a service running
@@ -277,8 +274,12 @@ public class RouterServiceValidator {
 			}
 		}
 		if (callback != null) {
-			callback.onFinishedValidation(valid, service);
-			if (!valid) {
+			callback.onFinishedValidation(valid, component);
+			if (valid) {
+				synchronized (this) {
+					this.service = component;
+				}
+			} else {
 				// make sure we clear up the Preference
 				ServiceNameLoader serviceNameLoader = new ServiceNameLoader(this.context);
 				serviceNameLoader.clear();
@@ -312,51 +313,54 @@ public class RouterServiceValidator {
 		@Override
 		protected ComponentName doInBackground(final Context... contexts) {
 			serviceNameLoader = new ServiceNameLoader(contexts[0]);
-			if (serviceNameLoader.isValid()) {
+			if (usePreferenceCache && serviceNameLoader.isValid()) {
 				RouterServiceValidator.this.service = serviceNameLoader.getServiceName();
 				Log.d(TAG, "serviceNameLoader returns " + serviceNameLoader.getServiceName());
 				return serviceNameLoader.getServiceName();
 			}
 
-			List<SdlAppInfo> sdlAppInfoList = AndroidTools.querySdlAppInfo(contexts[0], new SdlAppInfo.FindConnectedRouterComparator());
-			if (sdlAppInfoList != null && !sdlAppInfoList.isEmpty()) {
-				SdlAppInfo lastItem = sdlAppInfoList.get(sdlAppInfoList.size()-1);
-				for (SdlAppInfo info: sdlAppInfoList) {
-					final boolean isLast = (info.equals(lastItem));
-					if (serviceNameLoader.isValid()) {
-						break; // we found it already
+			// let's use ServiceFinder here
+			Context context = contexts[0];
+			new ServiceFinder(context, context.getPackageName(), new ServiceFinder.ServiceFinderCallback() {
+				@Override
+				public void onComplete(Vector<ComponentName> routerServices) {
+					// OK, we found the routerServices. Let's see one-by-one.
+					if (routerServices == null || routerServices.isEmpty()) {
+						return;
 					}
-					ComponentName name = info.getRouterServiceComponentName();
-					final SdlRouterStatusProvider provider = new SdlRouterStatusProvider(contexts[0], name, new SdlRouterStatusProvider.ConnectedStatusCallback() {
-						@Override
-						public void onConnectionStatusUpdate(boolean connected, ComponentName service, Context context) {
-							if (connected) {
-								Log.d(TAG, "We found the connected service (" + service + "); currentThread is " + Thread.currentThread().getName());
-								serviceNameLoader.setServiceName(service);
-								serviceNameLoader.save(contexts[0]);
-								if (mCallback != null) {
-									mCallback.onFound(service);
-								}
-							} else {
-								Log.d(TAG, "SdlRouterStatusProvider returns service=" + service + "; connected=" + connected);
-								if (isLast && mCallback != null && !serviceNameLoader.isValid()) {
-									mCallback.onFailed();
-									serviceNameLoader.clear();
+					for (ComponentName name: routerServices) {
+						final boolean isLast = name.equals(routerServices.lastElement());
+						final SdlRouterStatusProvider provider = new SdlRouterStatusProvider(contexts[0], name, new SdlRouterStatusProvider.ConnectedStatusCallback() {
+							@Override
+							public void onConnectionStatusUpdate(boolean connected, ComponentName service, Context context) {
+								if (connected) {
+									Log.d(TAG, "We found the connected service (" + service + "); currentThread is " + Thread.currentThread().getName());
+									serviceNameLoader.setServiceName(service);
+									serviceNameLoader.save(contexts[0]);
+									if (mCallback != null) {
+										mCallback.onFound(service);
+									}
+								} else {
+									Log.d(TAG, "SdlRouterStatusProvider returns service=" + service + "; connected=" + connected);
+									if (isLast && mCallback != null && !serviceNameLoader.isValid()) {
+										mCallback.onFailed();
+										serviceNameLoader.clear();
+									}
 								}
 							}
-						}
-					});
-					Log.d(TAG, "about checkIsConnected; thread=" + Thread.currentThread().getName());
-					provider.checkIsConnected();
-					provider.cancel();
+						});
+						Log.d(TAG, "about checkIsConnected; thread=" + Thread.currentThread().getName());
+						provider.checkIsConnected();
+						provider.cancel();
+					}
 				}
-			}
-			if (!serviceNameLoader.isValid()) {
-				Log.d(TAG, "cannot find the connected service... fallback");
-				return null;
-			} else {
+			});
+			if (usePreferenceCache && serviceNameLoader.isValid()) {
 				Log.d(TAG, "foundService=" + serviceNameLoader.getServiceName());
 				return serviceNameLoader.getServiceName();
+			} else {
+				Log.d(TAG, "cannot find the connected service... fallback");
+				return null;
 			}
 		}
 
