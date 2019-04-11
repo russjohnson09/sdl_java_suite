@@ -134,8 +134,7 @@ public class RouterServiceValidator {
 	private ComponentName service;//This is how we can save different routers over another in a waterfall method if we choose to.
 
 	private static int securityLevel = -1;
-	private final boolean usePreferenceCache = false;
-	
+
 	public RouterServiceValidator(Context context){
 		this.context = context;
 		inDebugMode = inDebugMode();
@@ -312,13 +311,6 @@ public class RouterServiceValidator {
 
 		@Override
 		protected ComponentName doInBackground(final Context... contexts) {
-			serviceNameLoader = new ServiceNameLoader(contexts[0]);
-			if (usePreferenceCache && serviceNameLoader.isValid()) {
-				RouterServiceValidator.this.service = serviceNameLoader.getServiceName();
-				Log.d(TAG, "serviceNameLoader returns " + serviceNameLoader.getServiceName());
-				return serviceNameLoader.getServiceName();
-			}
-
 			// let's use ServiceFinder here
 			Context context = contexts[0];
 			new ServiceFinder(context, context.getPackageName(), new ServiceFinder.ServiceFinderCallback() {
@@ -328,6 +320,11 @@ public class RouterServiceValidator {
 					if (routerServices == null || routerServices.isEmpty()) {
 						return;
 					}
+					serviceNameLoader = new ServiceNameLoader(contexts[0]);
+					if (serviceNameLoader.isValid()) {
+						routerServices.insertElementAt(serviceNameLoader.getServiceName(), 0);
+					}
+
 					for (ComponentName name: routerServices) {
 						final boolean isLast = name.equals(routerServices.lastElement());
 						final SdlRouterStatusProvider provider = new SdlRouterStatusProvider(contexts[0], name, new SdlRouterStatusProvider.ConnectedStatusCallback() {
@@ -355,36 +352,27 @@ public class RouterServiceValidator {
 					}
 				}
 			});
-			if (usePreferenceCache && serviceNameLoader.isValid()) {
-				Log.d(TAG, "foundService=" + serviceNameLoader.getServiceName());
-				return serviceNameLoader.getServiceName();
-			} else {
-				Log.d(TAG, "cannot find the connected service... fallback");
-				return null;
-			}
+			return null;
 		}
 
 		@Override
 		protected void onPostExecute(ComponentName componentName) {
-			Log.d(TAG, "onPostExecute componentName=" + componentName);
+			//Log.d(TAG, "onPostExecute componentName=" + componentName);
 			super.onPostExecute(componentName);
-			if (componentName != null && mCallback != null) {
-				// OK, we found the routerservice
-				RouterServiceValidator.this.service = componentName;
-				mCallback.onFound(componentName);
-			} else {
-				Log.d(TAG, "SdlRouterStatusProvider is in progress");
-			}
+			// do nothing here.
 		}
 
 	}
 
+	/**
+	 * ServiceNameLoader: this holds the last connected service.
+	 */
 	class ServiceNameLoader {
 		static final String prefName = "RouterServiceValidator.FindRouterTask";
 		static final String packageKey = "packageName";
 		static final String classKey = "className";
 		static final String tsKey = "timestamp";
-		final int _validSpan = 100;
+		final int _validSpan = 300; // 300 seconds == 5 minutes
 		ComponentName _serviceName;
 		long _timeStamp;
 		Context mContext;
