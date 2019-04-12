@@ -26,14 +26,12 @@ import android.content.pm.ResolveInfo;
 import android.content.pm.ServiceInfo;
 import android.os.AsyncTask;
 import android.os.Build;
-import android.os.ConditionVariable;
 import android.support.annotation.NonNull;
 import android.util.Log;
 
 import com.smartdevicelink.util.AndroidTools;
 import com.smartdevicelink.util.HttpRequestTask;
 import com.smartdevicelink.util.HttpRequestTask.HttpRequestTaskCallback;
-import com.smartdevicelink.util.SdlAppInfo;
 import com.smartdevicelink.util.ServiceFinder;
 
 /**
@@ -156,6 +154,9 @@ public class RouterServiceValidator {
 	/**
 	 * Main function to call to ensure we are connecting to a validated router service
 	 * @return whether or not the currently running router service can be trusted.
+	 *
+	 * Due to SDL 0220 proposal, we should use validateAsync always.
+	 * This function remains only for backward compatibility.
 	 */
 	public boolean validate(){
 
@@ -236,10 +237,9 @@ public class RouterServiceValidator {
 
 		if(this.service == null){
 			Log.d(TAG, "about finding the best Router by using retrieveBestRouterServiceName");
-			retrieveBestRouterServiceNameAsync(this.context, new FindConnectedRouterCallback() {
+			new FindRouterTask(new FindConnectedRouterCallback() {
 				@Override
 				public void onFound(ComponentName component) {
-					//service = component;
 					Log.d(TAG, "FindConnectedRouterCallback.onFound got called. Package=" + component);
 					checkTrustedRouter(callback, pm, component);
 				}
@@ -250,10 +250,8 @@ public class RouterServiceValidator {
 					if (callback != null) {
 						callback.onFinishedValidation(false, null);
 					}
-					// @REVIEW: do we need this??
-					//wakeUpRouterServices();
 				}
-			});
+			}).execute(this.context);
 		} else {
 			// already found the RouterService
 			checkTrustedRouter(callback, pm, service);
@@ -261,6 +259,14 @@ public class RouterServiceValidator {
 
 	}
 
+	/**
+	 * checkTrustedRouter: This checks to see if the given component is Trusted RouterService,
+	 * and calls ValidationStatusCallback#onFinishedValidation.
+	 *
+	 * @param callback
+	 * @param pm
+	 * @param component
+	 */
 	private void checkTrustedRouter(final ValidationStatusCallback callback, final PackageManager pm, final ComponentName component) {
 		String packageName = appPackageForComponentName(component, pm);
 		boolean valid = false;
@@ -280,8 +286,8 @@ public class RouterServiceValidator {
 				}
 			} else {
 				// make sure we clear up the Preference
-				ServiceNameLoader serviceNameLoader = new ServiceNameLoader(this.context);
-				serviceNameLoader.clear();
+				ServiceNameHolder serviceNameHolder = new ServiceNameHolder(this.context);
+				serviceNameHolder.clear();
 			}
 		}
 	}
@@ -294,14 +300,12 @@ public class RouterServiceValidator {
 		task.execute(context);
 	}
 
-	private void retrieveBestRouterServiceNameAsync(Context context, FindConnectedRouterCallback callback) {
-		FindRouterTask task = new FindRouterTask(callback);
-		task.execute(context);
-	}
-
+	/**
+	 * FindRouterTask: AsyncTask to find the connected RouterService.
+	 */
 	class FindRouterTask extends AsyncTask<Context, Void, ComponentName> {
 		FindConnectedRouterCallback mCallback;
-		ServiceNameLoader serviceNameLoader = null;
+		ServiceNameHolder serviceNameHolder = null;
 
 		FindRouterTask(FindConnectedRouterCallback callback) {
 			if (callback != null) {
@@ -320,9 +324,9 @@ public class RouterServiceValidator {
 					if (routerServices == null || routerServices.isEmpty()) {
 						return;
 					}
-					serviceNameLoader = new ServiceNameLoader(contexts[0]);
-					if (serviceNameLoader.isValid()) {
-						routerServices.insertElementAt(serviceNameLoader.getServiceName(), 0);
+					serviceNameHolder = new ServiceNameHolder(contexts[0]);
+					if (serviceNameHolder.isValid()) {
+						routerServices.insertElementAt(serviceNameHolder.getServiceName(), 0);
 					}
 
 					for (ComponentName name: routerServices) {
@@ -332,16 +336,16 @@ public class RouterServiceValidator {
 							public void onConnectionStatusUpdate(boolean connected, ComponentName service, Context context) {
 								if (connected) {
 									Log.d(TAG, "We found the connected service (" + service + "); currentThread is " + Thread.currentThread().getName());
-									serviceNameLoader.setServiceName(service);
-									serviceNameLoader.save(contexts[0]);
+									serviceNameHolder.setServiceName(service);
+									serviceNameHolder.save(contexts[0]);
 									if (mCallback != null) {
 										mCallback.onFound(service);
 									}
 								} else {
 									Log.d(TAG, "SdlRouterStatusProvider returns service=" + service + "; connected=" + connected);
-									if (isLast && mCallback != null && !serviceNameLoader.isValid()) {
+									if (isLast && mCallback != null && !serviceNameHolder.isValid()) {
 										mCallback.onFailed();
-										serviceNameLoader.clear();
+										serviceNameHolder.clear();
 									}
 								}
 							}
@@ -365,9 +369,9 @@ public class RouterServiceValidator {
 	}
 
 	/**
-	 * ServiceNameLoader: this holds the last connected service.
+	 * ServiceNameHolder: this holds the last connected service.
 	 */
-	class ServiceNameLoader {
+	class ServiceNameHolder {
 		static final String prefName = "RouterServiceValidator.FindRouterTask";
 		static final String packageKey = "packageName";
 		static final String classKey = "className";
@@ -377,11 +381,11 @@ public class RouterServiceValidator {
 		long _timeStamp;
 		Context mContext;
 
-		public ServiceNameLoader(String packageName, String className, long timeStamp) {
+		public ServiceNameHolder(String packageName, String className, long timeStamp) {
 			_serviceName = new ComponentName(packageName, className);
 			_timeStamp = timeStamp;
 		}
-		public ServiceNameLoader(Context context) {
+		public ServiceNameHolder(Context context) {
 			SharedPreferences pref = context.getSharedPreferences(prefName, Context.MODE_PRIVATE);
 			String packageName = pref.getString(packageKey, "");
 			String className = pref.getString(classKey, "");
