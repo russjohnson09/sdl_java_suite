@@ -789,7 +789,7 @@ public abstract class SdlProxyBase<proxyListenerType extends IProxyListenerBase>
 								   boolean callbackToUIThread, Boolean preRegister, String sHashID, Boolean bAppResumeEnab,
 								   BaseTransportConfig transportConfig) throws SdlException
 	{
-		Log.i(TAG, "SDL_LIB_VERSION: " + com.smartdevicelink.proxy.Version.VERSION);
+		Log.i(TAG, "SDL_LIB_VERSION: " + com.smartdevicelink.proxy.Version.VERSION + " patched by Xevo" /* for debugging analysis */ );
 		setProtocolVersion(new Version(PROX_PROT_VER_ONE,0,0));
 		
 		if (preRegister != null && preRegister)
