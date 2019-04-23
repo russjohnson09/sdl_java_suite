@@ -49,7 +49,7 @@ public class VideoStreamingParameters {
 	private final int DEFAULT_WIDTH = 1024;
 	private final int DEFAULT_HEIGHT = 576;
 	private final int DEFAULT_DENSITY = DisplayMetrics.DENSITY_HIGH;
-	private final int DEFAULT_FRAMERATE = 30;
+	private final int DEFAULT_FRAMERATE = 15; // 30
 	private final int DEFAULT_BITRATE = 512000;
 	private final int DEFAULT_INTERVAL = 5;
 

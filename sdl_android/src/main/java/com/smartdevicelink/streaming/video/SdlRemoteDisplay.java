@@ -74,17 +74,18 @@ public abstract class SdlRemoteDisplay extends Presentation {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        REFRESH_RATE_MS = 1000 / DebugConst.REFRESH_RATE;
+        //REFRESH_RATE_MS = 1000 / DebugConst.REFRESH_RATE;
         super.onCreate(savedInstanceState);
         setTitle(TAG);
 
         w  = getWindow();
 
-        startRefreshTask();
+        //startRefreshTask();
 
         w.setType(WindowManager.LayoutParams.TYPE_PRIVATE_PRESENTATION);
     }
 
+    /*
     protected void startRefreshTask() {
         handler.postDelayed(mStartRefreshTaskCallback, REFRESH_RATE_MS);
     }
@@ -110,6 +111,7 @@ public abstract class SdlRemoteDisplay extends Presentation {
     // Xevo customize
     protected void onInvalidate() {
     }
+    */
 
     @SuppressWarnings("unused")
     public View getMainView(){
@@ -131,13 +133,13 @@ public abstract class SdlRemoteDisplay extends Presentation {
         uiHandler.post(new Runnable() {
             @Override
             public void run() {
-                mainView.dispatchTouchEvent(motionEvent);
+                getMainView().dispatchTouchEvent(motionEvent);
             }
         });
     }
 
     public void stop(){
-        stopRefreshTask();
+        //stopRefreshTask();
         dismissPresentation();
     }
 
