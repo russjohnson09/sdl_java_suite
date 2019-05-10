@@ -191,7 +191,7 @@ public class VideoStreamManager extends BaseSubManager {
 	 *
 	 * @param encrypted a flag of if the stream should be encrypted. Only set if you have a supplied encryption library that the module can understand.
 	 */
-	public void startRemoteDisplayStream(Context context, Class<? extends SdlRemoteDisplay> remoteDisplayClass, VideoStreamingParameters parameters, final boolean encrypted){
+	public void startRemoteDisplayStream(Context context, Class<? extends SdlRemoteDisplay> remoteDisplayClass, VideoStreamingParameters parameters, final boolean encrypted, final WatchDogTimerListener listener){
 		this.context = new WeakReference<>(context);
 		this.remoteDisplayClass = remoteDisplayClass;
 		int majorProtocolVersion = internalInterface.getProtocolVersion().getMajor();
@@ -207,7 +207,7 @@ public class VideoStreamManager extends BaseSubManager {
 					public void onCapabilityRetrieved(Object capability) {
 						VideoStreamingParameters params = new VideoStreamingParameters();
 						params.update((VideoStreamingCapability)capability);	//Streaming parameters are ready time to stream
-						startStreaming(params, encrypted);
+						startStreaming(params, encrypted, listener);
 					}
 
 					@Override
@@ -223,10 +223,10 @@ public class VideoStreamManager extends BaseSubManager {
 				if(dispCap !=null){
 					params.setResolution(dispCap.getScreenParams().getImageResolution());
 				}
-				startStreaming(params, encrypted);
+				startStreaming(params, encrypted, listener);
 			}
 		}else{
-			startStreaming(parameters, encrypted);
+			startStreaming(parameters, encrypted, listener);
 		}
 	}
 
@@ -262,7 +262,7 @@ public class VideoStreamManager extends BaseSubManager {
 	 *                    VideoStreamingCodec.H264 is accepted), height and width of the video in pixels.
 	 * @param encrypted Specify true if packets on this service have to be encrypted
 	 */
-	private void startStreaming(VideoStreamingParameters parameters, boolean encrypted){
+	private void startStreaming(VideoStreamingParameters parameters, boolean encrypted, WatchDogTimerListener listener){
 		this.parameters = parameters;
 		this.streamListener = startVideoService(parameters, encrypted);
 		if(streamListener == null){
@@ -274,15 +274,18 @@ public class VideoStreamManager extends BaseSubManager {
 		if(capability != null && capability.getIsHapticSpatialDataSupported()){
 			hapticManager = new HapticInterfaceManager(internalInterface);
 		}
-		startEncoder();
+		startEncoder(listener);
 	}
 
 	/**
 	 * Initializes and starts the virtual display encoder and creates the remote display
 	 */
-	private void startEncoder(){
+    private void startEncoder() {
+        startEncoder(null);
+    }
+    private void startEncoder(WatchDogTimerListener listener){
 		try {
-			virtualDisplayEncoder.init(this.context.get(), streamListener, parameters);
+			virtualDisplayEncoder.init(this.context.get(), streamListener, parameters, listener);
 			//We are all set so we can start streaming at at this point
 			virtualDisplayEncoder.start();
 			//Encoder should be up and running
@@ -381,6 +384,11 @@ public class VideoStreamManager extends BaseSubManager {
 	 */
 	public @StreamingStateMachine.StreamingState int currentVideoStreamState(){
 		return stateMachine.getState();
+	}
+
+	// Watch dog time out listener
+	public interface WatchDogTimerListener {
+		void onTimeout(String info);
 	}
 
 	// HELPER METHODS

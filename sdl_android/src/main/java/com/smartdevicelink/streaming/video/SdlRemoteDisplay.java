@@ -70,22 +70,32 @@ public abstract class SdlRemoteDisplay extends Presentation {
 
     public SdlRemoteDisplay(Context context, Display display) {
         super(context, display);
+
+        // Arrows work around
+        try { Thread.sleep(100); } catch (InterruptedException ie) {/* ignoe */ }
     }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // Arrows work around
+        try { Thread.sleep(100); } catch (InterruptedException ie) {/* ignoe */ }
+
         //REFRESH_RATE_MS = 1000 / DebugConst.REFRESH_RATE;
         super.onCreate(savedInstanceState);
         setTitle(TAG);
 
         w  = getWindow();
 
-        //startRefreshTask();
+        // Arrows work around
+        startRefreshTask();
+
+        // Arrows work around
+        try { Thread.sleep(100); } catch (InterruptedException ie) {/* ignoe */ }
 
         w.setType(WindowManager.LayoutParams.TYPE_PRIVATE_PRESENTATION);
     }
 
-    /*
+
     protected void startRefreshTask() {
         handler.postDelayed(mStartRefreshTaskCallback, REFRESH_RATE_MS);
     }
@@ -111,7 +121,7 @@ public abstract class SdlRemoteDisplay extends Presentation {
     // Xevo customize
     protected void onInvalidate() {
     }
-    */
+
 
     @SuppressWarnings("unused")
     public View getMainView(){
@@ -177,11 +187,13 @@ public abstract class SdlRemoteDisplay extends Presentation {
         @Override
         public Boolean call() {
 
-            uiHandler.post(new Runnable() {
+// Arrows workaround            uiHandler.post(new Runnable() {
+            uiHandler.postDelayed(new Runnable() {
                 @Override
                 public void run() {
                     // Want to create presentation on UI thread so it finds the right Looper
                     // when setting up the Dialog.
+                    Log.e(TAG, "XXX remote disp creat in" );
                     if ((remoteDisplay == null) && (mDisplay != null))
                     {
                         try {
@@ -197,6 +209,7 @@ public abstract class SdlRemoteDisplay extends Presentation {
                         try {
                             remoteDisplay.show();
                             remoteDisplay.callback = callback;
+                            Log.e(TAG, "XXX remote show done" );
                             if(callback!=null){
                                 callback.onCreated(remoteDisplay);
                             }
@@ -208,7 +221,7 @@ public abstract class SdlRemoteDisplay extends Presentation {
                         }
                     }
                 }
-            });
+            }, 100);
 
             return presentationShowError;
         }

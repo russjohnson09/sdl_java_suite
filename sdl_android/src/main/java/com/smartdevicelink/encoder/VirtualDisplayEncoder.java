@@ -50,6 +50,7 @@ import android.util.Log;
 import android.view.Display;
 import android.view.Surface;
 
+import com.smartdevicelink.managers.video.VideoStreamManager;
 import com.smartdevicelink.proxy.interfaces.IVideoStreamListener;
 import com.smartdevicelink.proxy.rpc.ImageResolution;
 import com.smartdevicelink.proxy.rpc.VideoStreamingFormat;
@@ -65,6 +66,8 @@ import com.android.grafika.gles.FullFrameRect;
 import com.android.grafika.gles.OffscreenSurface;
 import com.android.grafika.gles.Texture2dProgram;
 import com.android.grafika.gles.WindowSurface;
+
+import static android.os.Looper.getMainLooper;
 
 @TargetApi(19)
 @SuppressWarnings("NullableProblems")
@@ -95,6 +98,8 @@ public class VirtualDisplayEncoder {
     private FullFrameRect mFullFrameBlit;
     private WindowSurface mEncoderSurface;
 
+    private VideoStreamManager.WatchDogTimerListener listener = null;
+
     /**
      * Initialization method for VirtualDisplayEncoder object. MUST be called before start() or shutdown()
      * Will overwrite previously set videoWeight and videoHeight
@@ -104,6 +109,9 @@ public class VirtualDisplayEncoder {
      * @throws Exception if the API level is <19 or supplied parameters were null
      */
     public void init(Context context, IVideoStreamListener outputListener, VideoStreamingParameters streamingParams) throws Exception {
+        init( context, outputListener, streamingParams, null);
+    }
+    public void init(Context context, IVideoStreamListener outputListener, VideoStreamingParameters streamingParams, VideoStreamManager.WatchDogTimerListener listener) throws Exception {
         if (android.os.Build.VERSION.SDK_INT < Build.VERSION_CODES.KITKAT) {
             Log.e(TAG, "API level of 19 required for VirtualDisplayEncoder");
             throw new Exception("API level of 19 required");
@@ -121,6 +129,8 @@ public class VirtualDisplayEncoder {
         mOutputListener = outputListener;
 
         initPassed = true;
+
+        this.listener = listener;
     }
 
     @SuppressWarnings("unused")
@@ -150,6 +160,8 @@ public class VirtualDisplayEncoder {
         if (streamingParams == null || streamingParams.getResolution() == null || streamingParams.getFormat() == null) {
             return;
         }
+
+        mHandler.postDelayed(mWatchDogTimer, WATCHDOGTIMEOUT_MSEC);
 
         int Width = streamingParams.getResolution().getResolutionWidth();
         int Height = streamingParams.getResolution().getResolutionHeight();
@@ -186,12 +198,21 @@ public class VirtualDisplayEncoder {
         }
     }
 
-    public void shutDown() {
+    // This API shall be called asynchronously from several thread. So, it must be sychronized
+    public synchronized void shutDown() {
+        boolean CHECK = false;
+        mHandler.removeCallbacks(mWatchDogTimer);
+
         if (!initPassed) {
             Log.e(TAG, "VirtualDisplayEncoder was not properly initialized with the init() method.");
             return;
         }
+        Log.e(TAG, "VirtualDisplayEncoder shutdown in stack trace:" );
+        Throwable th = new Throwable().fillInStackTrace();
+        th.printStackTrace();
+
         try {
+            Log.e(TAG, "VirtualDisplayEncoder  shutdown mCaptureThread releasing");
             if (mCaptureThread != null) {
                 mCaptureThread.stopAsync();
                 try {
@@ -200,53 +221,126 @@ public class VirtualDisplayEncoder {
                 }
                 mCaptureThread = null;
             }
+            Log.e(TAG, "VirtualDisplayEncoder  shutdown mInterSurface releasing");
             if (mInterSurface != null) {
-                mInterSurface.release();
+                try {
+                    mInterSurface.release();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    if ( CHECK ) {
+                        throw e;
+                    }
+                }
                 mInterSurface = null;
             }
+            Log.e(TAG, "VirtualDisplayEncoder  shutdown mInterSurfaceTexture releasing");
             if (mInterSurfaceTexture != null) {
+                try {
                 mInterSurfaceTexture.release();
+                } catch (Exception e) {
+                    if ( CHECK ) {
+                        throw e;
+                    }
+                }
                 mInterSurfaceTexture = null;
             }
+            Log.e(TAG, "VirtualDisplayEncoder  shutdown mFullFrameBlit releasing");
             if (mFullFrameBlit != null) {
-                mFullFrameBlit.release(false);
+                try {
+                    mFullFrameBlit.release(false);
+                } catch (Exception e) {
+                    if ( CHECK ) {
+                        throw e;
+                    }
+                }
                 mFullFrameBlit = null;
             }
             mTextureId = -1;
+            Log.e(TAG, "VirtualDisplayEncoder  shutdown mDummySurface releasing");
             if (mDummySurface != null) {
-                mDummySurface.release();
+                try {
+                    mDummySurface.release();
+                } catch (Exception e) {
+                    if ( CHECK ) {
+                        throw e;
+                    }
+                }
                 mDummySurface = null;
             }
+            Log.e(TAG, "VirtualDisplayEncoder  shutdown mEglCore releasing");
             if (mEglCore != null) {
-                mEglCore.release();
+                try {
+                    mEglCore.release();
+                } catch (Exception e) {
+                    if ( CHECK ) {
+                        throw e;
+                    }
+                }
                 mEglCore = null;
             }
 
+            Log.e(TAG, "VirtualDisplayEncoder  shutdown encoderThread releasing");
             if (encoderThread != null) {
-                encoderThread.interrupt();
+                try {
+                    encoderThread.interrupt();
+                } catch (Exception e) {
+                    if ( CHECK ) {
+                        throw e;
+                    }
+                }
                 encoderThread = null;
             }
 
+            Log.e(TAG, "VirtualDisplayEncoder  shutdown mVideoEncoder releasing");
             if (mVideoEncoder != null) {
-                mVideoEncoder.stop();
-                mVideoEncoder.release();
+                try {
+                    mVideoEncoder.stop();
+                    mVideoEncoder.release();
+                } catch (Exception e) {
+                    if ( CHECK ) {
+                        throw e;
+                    }
+                }
                 mVideoEncoder = null;
             }
 
+            Log.e(TAG, "VirtualDisplayEncoder  shutdown virtualDisplay releasing");
             if (virtualDisplay != null) {
-                virtualDisplay.release();
+                try {
+                    virtualDisplay.release();
+                } catch (Exception e) {
+                    if ( CHECK ) {
+                        throw e;
+                    }
+                }
                 virtualDisplay = null;
             }
+            Log.e(TAG, "VirtualDisplayEncoder  shutdown mEncoderSurface releasing");
             if (mEncoderSurface != null) {
-                mEncoderSurface.release();
+                try {
+                    mEncoderSurface.release();
+                } catch (Exception e) {
+                    if ( CHECK ) {
+                        throw e;
+                    }
+                }
                 mEncoderSurface = null;
             }
+            Log.e(TAG, "VirtualDisplayEncoder  shutdown inputSurface releasing");
             if (inputSurface != null) {
-                inputSurface.release();
+                try {
+                    inputSurface.release();
+                } catch (Exception e) {
+                    if ( CHECK ) {
+                        throw e;
+                    }
+                }
                 inputSurface = null;
             }
+            Log.e(TAG, "VirtualDisplayEncoder shutdown succesfully DONE");
         } catch (Exception ex) {
             Log.e(TAG, "shutDown() failed");
+            ex.printStackTrace();
         }
     }
 
@@ -293,6 +387,10 @@ public class VirtualDisplayEncoder {
                     @TargetApi(Build.VERSION_CODES.LOLLIPOP)
                     @Override
                     public void onOutputBufferAvailable(MediaCodec codec, int index, MediaCodec.BufferInfo info) {
+                        mHandler.removeCallbacks(mWatchDogTimer);
+                        // only check first encode, don't watch dog cyclic.
+                        // mHandler.postDelayed(mWatchDogTimer, WATCHDOGTIMEOUT_MSEC);
+
                         if ( callCount == 0 ) {
                             totalDataSize = 0;
                             DebugConst.totalDataSize(0);
@@ -694,4 +792,17 @@ public class VirtualDisplayEncoder {
             mDestSurface.swapBuffers();
         }
     }
+
+    // Watch dog timer
+    private static final int WATCHDOGTIMEOUT_MSEC = 5*1000;
+    private Handler mHandler = new Handler(getMainLooper());
+    private Runnable mWatchDogTimer = new Runnable() {
+        @Override
+        public void run() {
+            if (listener != null) {
+                listener.onTimeout("watch dog timeout");
+            }
+        }
+    };
+
 }
