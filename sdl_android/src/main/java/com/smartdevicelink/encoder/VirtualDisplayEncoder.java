@@ -165,15 +165,12 @@ public class VirtualDisplayEncoder {
 
         int Width = streamingParams.getResolution().getResolutionWidth();
         int Height = streamingParams.getResolution().getResolutionHeight();
-        setupGLES(Width, Height);
         synchronized (STREAMING_LOCK) {
 
             try {
+                setupGLES(Width, Height);
                 mEncoderSurface = new WindowSurface(mEglCore, prepareVideoEncoder(), true);
-                virtualDisplay = mDisplayManager.createVirtualDisplay(TAG,
-                        Width, Height,
-                        streamingParams.getDisplayDensity(), mInterSurface, DisplayManager.VIRTUAL_DISPLAY_FLAG_PRESENTATION);
-                startEncoder();
+
                 final ConditionVariable startCond = new ConditionVariable();
                 mCaptureThread = new CaptureThread(mEglCore, mInterSurfaceTexture, mTextureId,
                         mEncoderSurface, mFullFrameBlit, Width, Height, streamingParams.getFrameRate(), new Runnable() {
@@ -191,6 +188,12 @@ public class VirtualDisplayEncoder {
                 } else {
                     mInterSurfaceTexture.setOnFrameAvailableListener(mCaptureThread);
                 }
+
+                virtualDisplay = mDisplayManager.createVirtualDisplay(TAG,
+                        Width, Height,
+                        streamingParams.getDisplayDensity(), mInterSurface, DisplayManager.VIRTUAL_DISPLAY_FLAG_PRESENTATION);
+                startEncoder();
+
             } catch (Exception ex) {
                 Log.e(TAG, "Unable to create Virtual Display.");
                 throw new RuntimeException(ex);
@@ -200,147 +203,117 @@ public class VirtualDisplayEncoder {
 
     // This API shall be called asynchronously from several thread. So, it must be sychronized
     public synchronized void shutDown() {
-        boolean CHECK = false;
         mHandler.removeCallbacks(mWatchDogTimer);
 
         if (!initPassed) {
             Log.e(TAG, "VirtualDisplayEncoder was not properly initialized with the init() method.");
             return;
         }
-        Log.e(TAG, "VirtualDisplayEncoder shutdown in stack trace:" );
-        Throwable th = new Throwable().fillInStackTrace();
-        th.printStackTrace();
+        synchronized (STREAMING_LOCK) {
 
-        try {
-            Log.e(TAG, "VirtualDisplayEncoder  shutdown mCaptureThread releasing");
             if (mCaptureThread != null) {
-                mCaptureThread.stopAsync();
                 try {
+                    mCaptureThread.stopAsync();
                     mCaptureThread.join();
-                } catch (InterruptedException e) {
+                } catch (Exception ex) {
+                    Log.e(TAG, "shutDown() mCaptureThread failed: " + ex);
                 }
                 mCaptureThread = null;
             }
-            Log.e(TAG, "VirtualDisplayEncoder  shutdown mInterSurface releasing");
+
             if (mInterSurface != null) {
                 try {
                     mInterSurface.release();
-                } catch (Exception e) {
-                    e.printStackTrace();
-                    if ( CHECK ) {
-                        throw e;
-                    }
+                } catch (Exception ex) {
+                    Log.e(TAG, "shutDown() mInterSurface failed: " + ex);
                 }
                 mInterSurface = null;
             }
-            Log.e(TAG, "VirtualDisplayEncoder  shutdown mInterSurfaceTexture releasing");
+
             if (mInterSurfaceTexture != null) {
                 try {
-                mInterSurfaceTexture.release();
-                } catch (Exception e) {
-                    if ( CHECK ) {
-                        throw e;
-                    }
+                    mInterSurfaceTexture.release();
+                } catch (Exception ex) {
+                    Log.e(TAG, "shutDown() mInterSurfaceTexture failed: " + ex);
                 }
                 mInterSurfaceTexture = null;
             }
-            Log.e(TAG, "VirtualDisplayEncoder  shutdown mFullFrameBlit releasing");
+
             if (mFullFrameBlit != null) {
+
                 try {
                     mFullFrameBlit.release(false);
-                } catch (Exception e) {
-                    if ( CHECK ) {
-                        throw e;
-                    }
+                } catch (Exception ex) {
+                    Log.e(TAG, "shutDown() mFullFrameBlit failed: " + ex);
                 }
                 mFullFrameBlit = null;
             }
+
             mTextureId = -1;
-            Log.e(TAG, "VirtualDisplayEncoder  shutdown mDummySurface releasing");
+
             if (mDummySurface != null) {
                 try {
                     mDummySurface.release();
-                } catch (Exception e) {
-                    if ( CHECK ) {
-                        throw e;
-                    }
+                } catch (Exception ex) {
+                    Log.e(TAG, "shutDown() mDummySurface failed: " + ex);
                 }
                 mDummySurface = null;
             }
-            Log.e(TAG, "VirtualDisplayEncoder  shutdown mEglCore releasing");
+
             if (mEglCore != null) {
                 try {
                     mEglCore.release();
-                } catch (Exception e) {
-                    if ( CHECK ) {
-                        throw e;
-                    }
+                } catch (Exception ex) {
+                    Log.e(TAG, "shutDown() mEglCore failed: " + ex);
                 }
                 mEglCore = null;
             }
 
-            Log.e(TAG, "VirtualDisplayEncoder  shutdown encoderThread releasing");
             if (encoderThread != null) {
                 try {
                     encoderThread.interrupt();
-                } catch (Exception e) {
-                    if ( CHECK ) {
-                        throw e;
-                    }
+                } catch (Exception ex) {
+                    Log.e(TAG, "shutDown() encoderThread Exception: " + ex);
                 }
                 encoderThread = null;
             }
 
-            Log.e(TAG, "VirtualDisplayEncoder  shutdown mVideoEncoder releasing");
             if (mVideoEncoder != null) {
                 try {
                     mVideoEncoder.stop();
                     mVideoEncoder.release();
-                } catch (Exception e) {
-                    if ( CHECK ) {
-                        throw e;
-                    }
+                } catch (Exception ex) {
+                    Log.e(TAG, "shutDown() mVideoEncoder failed: " + ex);
                 }
                 mVideoEncoder = null;
             }
 
-            Log.e(TAG, "VirtualDisplayEncoder  shutdown virtualDisplay releasing");
             if (virtualDisplay != null) {
                 try {
                     virtualDisplay.release();
-                } catch (Exception e) {
-                    if ( CHECK ) {
-                        throw e;
-                    }
+                } catch (Exception ex) {
+                    Log.e(TAG, "shutDown() virtualDisplay failed: " + ex);
                 }
                 virtualDisplay = null;
             }
-            Log.e(TAG, "VirtualDisplayEncoder  shutdown mEncoderSurface releasing");
+
             if (mEncoderSurface != null) {
                 try {
                     mEncoderSurface.release();
-                } catch (Exception e) {
-                    if ( CHECK ) {
-                        throw e;
-                    }
+                } catch (Exception ex) {
+                    Log.e(TAG, "shutDown() mEncoderSurface failed: " + ex);
                 }
                 mEncoderSurface = null;
             }
-            Log.e(TAG, "VirtualDisplayEncoder  shutdown inputSurface releasing");
+
             if (inputSurface != null) {
                 try {
                     inputSurface.release();
-                } catch (Exception e) {
-                    if ( CHECK ) {
-                        throw e;
-                    }
+                } catch (Exception ex) {
+                    Log.e(TAG, "shutDown() inputSurface failed: " + ex);
                 }
                 inputSurface = null;
             }
-            Log.e(TAG, "VirtualDisplayEncoder shutdown succesfully DONE");
-        } catch (Exception ex) {
-            Log.e(TAG, "shutDown() failed");
-            ex.printStackTrace();
         }
     }
 
