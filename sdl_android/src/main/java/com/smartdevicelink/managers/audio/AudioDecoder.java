@@ -55,7 +55,7 @@ public class AudioDecoder extends BaseAudioDecoder {
 
                     if (outputBuffer.limit() > 0) {
                         SampleBuffer targetSampleBuffer = AudioDecoder.super.onOutputBufferAvailable(outputBuffer);
-                        AudioDecoder.this.listener.onAudioDataAvailable(targetSampleBuffer);
+                        AudioDecoder.this.listener.onAudioDataAvailable(targetSampleBuffer,bufferInfo.flags);
                     } else {
                         Log.w(TAG, "output buffer empty. Chance that silence was detected");
                     }

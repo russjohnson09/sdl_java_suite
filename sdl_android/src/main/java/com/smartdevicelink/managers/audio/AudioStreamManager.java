@@ -3,10 +3,12 @@ package com.smartdevicelink.managers.audio;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.res.Resources;
+import android.media.MediaCodec;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.Message;
 import android.support.annotation.IntDef;
 import android.support.annotation.NonNull;
 import android.support.annotation.RequiresApi;
@@ -34,6 +36,8 @@ import com.smartdevicelink.util.Version;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.ref.WeakReference;
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Queue;
@@ -69,7 +73,9 @@ public class AudioStreamManager extends BaseSubManager {
         }
     };
 
-
+    private SendAudioStreamThread mSendAudioStreamThread;
+    private ArrayList<AudioBuffer> mAudioBufferList = null;
+    private CompletionListener listener;
 
     // INTERNAL INTERFACE
 
@@ -289,6 +295,20 @@ public class AudioStreamManager extends BaseSubManager {
         if (listener != null) {
             listener.onComplete(isSuccess);
         }
+
+        mSendAudioStreamThread = null;
+        if (mSendAudioStreamThread != null) {
+            mSendAudioStreamThread.stopAs();
+            try {
+                mSendAudioStreamThread.join();
+            } catch (InterruptedException e) {
+            }
+            mSendAudioStreamThread = null;
+        }
+        if(mAudioBufferList != null){
+            mAudioBufferList.clear();
+            mAudioBufferList = null;
+        }
     }
 
     /**
@@ -348,17 +368,22 @@ public class AudioStreamManager extends BaseSubManager {
         if (streamingStateMachine.getState() != StreamingStateMachine.STARTED) {
             return;
         }
-
+        listener = completionListener;
         BaseAudioDecoder decoder;
         AudioDecoderListener decoderListener = new AudioDecoderListener() {
             @Override
             public void onAudioDataAvailable(SampleBuffer buffer) {
                 sdlAudioStream.sendAudio(buffer.getByteBuffer(), buffer.getPresentationTimeUs());
+
+            }
+            public void onAudioDataAvailable(SampleBuffer buffer,int flags) {
+                if(mSendAudioStreamThread != null){
+                    mSendAudioStreamThread.addAudioData(new AudioBuffer(buffer,flags == MediaCodec.BUFFER_FLAG_END_OF_STREAM));
+                }
             }
 
             @Override
             public void onDecoderFinish(boolean success) {
-                finish(completionListener, true);
 
                 synchronized (queue) {
                     // remove throws an exception if the queue is empty. The decoder of this listener
@@ -391,6 +416,10 @@ public class AudioStreamManager extends BaseSubManager {
             queue.add(decoder);
 
             if (queue.size() == 1) {
+                if(mSendAudioStreamThread == null){
+                    mSendAudioStreamThread = new SendAudioStreamThread();
+                }
+                mSendAudioStreamThread.start();
                 decoder.start();
             }
         }
@@ -443,5 +472,124 @@ public class AudioStreamManager extends BaseSubManager {
         // float array, though within a ByteBuffer it is stored in native endian byte order. The nominal
         // range of ENCODING_PCM_FLOAT audio data is [-1.0, 1.0].
         int FLOAT = Float.SIZE >> 3;
+    }
+
+    private class AudioBuffer {
+        private ByteBuffer mByteBuffer;
+        private long mPresentationTimeUs;
+        private boolean mIsEOS;
+
+        public AudioBuffer(SampleBuffer _buff,boolean isEos){
+            mIsEOS = isEos;
+            mPresentationTimeUs = _buff.getPresentationTimeUs();
+
+            ByteBuffer buff = _buff.getByteBuffer();
+            mByteBuffer = ByteBuffer.allocate(buff.remaining());
+            mByteBuffer.put(buff);
+            mByteBuffer.flip();
+        }
+        public long getPresentationTimeUs(){
+            return mPresentationTimeUs;
+        }
+        public ByteBuffer getByteBuffer(){
+            return mByteBuffer;
+        }
+        public boolean isIsEOS(){
+            return mIsEOS;
+        }
+
+    }
+    private final class SendAudioStreamThread extends Thread{
+        private static final int MSG_TICK = 1;
+        private static final int MSG_ADD = 2;
+        private static final int MSG_TERMINATE = -1;
+
+        private boolean isFirst = true;
+        private Handler mHandler = null;
+
+        @Override
+        public void run() {
+            Looper.prepare();
+            if(mHandler == null){
+                mHandler = new Handler() {
+                    long startTime = 0;
+                    public void handleMessage(Message msg) {
+
+                        switch (msg.what) {
+                            case MSG_TICK: {
+                                long delay = 0;
+                                if(mAudioBufferList != null && mAudioBufferList.size() > 0){
+
+                                    while (true){
+                                        if(mAudioBufferList.size() > 0){
+                                            AudioBuffer sBuffer = mAudioBufferList.get(0);
+                                            long nowTime = System.currentTimeMillis();
+                                            long AllowableTime = (nowTime - startTime + 5000) * 1000;
+                                            if( AllowableTime  >  sBuffer.getPresentationTimeUs()){
+                                                sdlAudioStream.sendAudio(sBuffer.getByteBuffer(), sBuffer.getPresentationTimeUs());
+                                                mAudioBufferList.remove(0);
+
+                                                if(sBuffer.isIsEOS()){
+                                                    finish(listener,true);
+                                                    return;
+                                                }
+
+                                            } else {
+                                                //Delay data transmission
+                                                delay = 1000;
+                                                break;
+                                            }
+                                        } else {
+                                            break;
+                                        }
+                                    }
+
+                                }
+                                sendMessageDelayed(mHandler.obtainMessage(MSG_TICK), delay);
+                                break;
+                            }
+                            case MSG_ADD: {
+                                if(mAudioBufferList == null){
+                                    mAudioBufferList =  new ArrayList<>();
+                                    startTime = System.currentTimeMillis();
+
+                                }
+                                mAudioBufferList.add( (AudioBuffer)msg.obj);
+                                break;
+                            }
+                            case MSG_TERMINATE: {
+                                removeCallbacksAndMessages(null);
+                                Looper looper = Looper.myLooper();
+                                if (looper != null) {
+                                    looper.quit();
+                                }
+                                break;
+                            }
+                        }
+
+                    }
+                };
+            }
+            Looper.loop();
+        }
+        public void addAudioData(final AudioBuffer buffer){
+            if (mHandler != null) {
+                Message msg = Message.obtain();
+                msg.what = MSG_ADD;
+                msg.obj = buffer;
+                mHandler.sendMessage(msg);
+
+                if(isFirst){
+                    mHandler.sendMessage(mHandler.obtainMessage(MSG_TICK));
+                    isFirst = false;
+                }
+            }
+        }
+        public void stopAs(){
+            if (mHandler != null) {
+                mHandler.sendMessage(mHandler.obtainMessage(MSG_TERMINATE));
+                mHandler = null;
+            }
+        }
     }
 }
