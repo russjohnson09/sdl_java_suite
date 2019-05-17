@@ -53,12 +53,13 @@ public class AudioDecoder extends BaseAudioDecoder {
                     ByteBuffer outputBuffer = mediaCodec.getOutputBuffer(i);
                     if (outputBuffer == null) return;
 
+                    SampleBuffer targetSampleBuffer = null;
                     if (outputBuffer.limit() > 0) {
-                        SampleBuffer targetSampleBuffer = AudioDecoder.super.onOutputBufferAvailable(outputBuffer);
-                        AudioDecoder.this.listener.onAudioDataAvailable(targetSampleBuffer,bufferInfo.flags);
+                        targetSampleBuffer = AudioDecoder.super.onOutputBufferAvailable(outputBuffer);
                     } else {
                         Log.w(TAG, "output buffer empty. Chance that silence was detected");
                     }
+                    AudioDecoder.this.listener.onAudioDataAvailable(targetSampleBuffer,bufferInfo.flags);
 
                     mediaCodec.releaseOutputBuffer(i, false);
 

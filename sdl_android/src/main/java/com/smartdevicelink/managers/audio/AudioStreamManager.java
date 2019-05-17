@@ -481,12 +481,15 @@ public class AudioStreamManager extends BaseSubManager {
 
         public AudioBuffer(SampleBuffer _buff,boolean isEos){
             mIsEOS = isEos;
-            mPresentationTimeUs = _buff.getPresentationTimeUs();
+            if(_buff != null){
+                mPresentationTimeUs = _buff.getPresentationTimeUs();
 
-            ByteBuffer buff = _buff.getByteBuffer();
-            mByteBuffer = ByteBuffer.allocate(buff.remaining());
-            mByteBuffer.put(buff);
-            mByteBuffer.flip();
+                ByteBuffer buff = _buff.getByteBuffer();
+                mByteBuffer = ByteBuffer.allocate(buff.remaining());
+                mByteBuffer.put(buff);
+                mByteBuffer.flip();
+            }
+
         }
         public long getPresentationTimeUs(){
             return mPresentationTimeUs;
@@ -523,21 +526,22 @@ public class AudioStreamManager extends BaseSubManager {
                                     while (true){
                                         if(mAudioBufferList.size() > 0){
                                             AudioBuffer sBuffer = mAudioBufferList.get(0);
-                                            long nowTime = System.currentTimeMillis();
-                                            long AllowableTime = (nowTime - startTime + 5000) * 1000;
-                                            if( AllowableTime  >  sBuffer.getPresentationTimeUs()){
-                                                sdlAudioStream.sendAudio(sBuffer.getByteBuffer(), sBuffer.getPresentationTimeUs());
-                                                mAudioBufferList.remove(0);
 
-                                                if(sBuffer.isIsEOS()){
-                                                    finish(listener,true);
-                                                    return;
+                                            if(sBuffer.getByteBuffer() != null){
+                                                long nowTime = System.currentTimeMillis();
+                                                long AllowableTime = (nowTime - startTime + 5000) * 1000;
+                                                if( AllowableTime  >  sBuffer.getPresentationTimeUs()){
+                                                    sdlAudioStream.sendAudio(sBuffer.getByteBuffer(), sBuffer.getPresentationTimeUs());
+                                                    mAudioBufferList.remove(0);
+                                                } else {
+                                                    //Delay data transmission
+                                                    delay = 1000;
+                                                    break;
                                                 }
-
-                                            } else {
-                                                //Delay data transmission
-                                                delay = 1000;
-                                                break;
+                                            }
+                                            if(sBuffer.isIsEOS()){
+                                                finish(listener,true);
+                                                return;
                                             }
                                         } else {
                                             break;
