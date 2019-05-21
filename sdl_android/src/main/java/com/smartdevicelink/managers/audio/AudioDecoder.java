@@ -50,8 +50,6 @@ public class AudioDecoder extends BaseAudioDecoder {
                     } catch (Exception e) {
                         e.printStackTrace();
                         listener.onDecoderError(e);
-                        //listener.onDecoderFinish(false);
-                        stop();
                     }
                 }
 
@@ -78,8 +76,6 @@ public class AudioDecoder extends BaseAudioDecoder {
                     } catch (Exception e) {
                         e.printStackTrace();
                         listener.onDecoderError(e);
-                        //listener.onDecoderFinish(false);
-                        stop();
                     }
                 }
 

@@ -11,7 +11,6 @@ public interface AudioDecoderListener {
      * Notifies that decoded audio data is available.
      * @param sampleBuffer The sample buffer holding the decoded audio data.
      */
-    void onAudioDataAvailable(SampleBuffer sampleBuffer);
     void onAudioDataAvailable(SampleBuffer sampleBuffer, int flags);
     /**
      * Notifies that the audio decoding is finished.
