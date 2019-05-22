@@ -107,7 +107,7 @@ public class AudioDecoderCompat extends BaseAudioDecoder {
                         } else if (outputBuffer.limit() > 0) {
                             sampleBuffer = reference.onOutputBufferAvailable(outputBuffer);
                             if(reference.listener!=null){
-                                reference.listener.onAudioDataAvailable(sampleBuffer);
+                                reference.listener.onAudioDataAvailable(sampleBuffer,outputBufferInfo.flags);
                             }
                             reference.decoder.releaseOutputBuffer(outputBuffersArrayIndex, false);
                         }
@@ -118,6 +118,7 @@ public class AudioDecoderCompat extends BaseAudioDecoder {
                 }
 
                 if (outputBufferInfo.flags == MediaCodec.BUFFER_FLAG_END_OF_STREAM) {
+                    reference.listener.onAudioDataAvailable(null,outputBufferInfo.flags);
                     if (reference.listener != null) {
                         reference.listener.onDecoderFinish(true);
                     }

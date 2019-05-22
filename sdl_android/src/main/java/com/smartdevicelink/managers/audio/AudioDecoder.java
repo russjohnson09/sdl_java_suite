@@ -41,30 +41,41 @@ public class AudioDecoder extends BaseAudioDecoder {
             decoder.setCallback(new MediaCodec.Callback() {
                 @Override
                 public void onInputBufferAvailable(@NonNull MediaCodec mediaCodec, int i) {
-                    ByteBuffer inputBuffer = mediaCodec.getInputBuffer(i);
-                    if (inputBuffer == null) return;
+                    try {
+                        ByteBuffer inputBuffer = mediaCodec.getInputBuffer(i);
+                        if (inputBuffer == null) return;
 
-                    MediaCodec.BufferInfo info = AudioDecoder.super.onInputBufferAvailable(extractor, inputBuffer);
-                    mediaCodec.queueInputBuffer(i, info.offset, info.size, info.presentationTimeUs, info.flags);
+                        MediaCodec.BufferInfo info = AudioDecoder.super.onInputBufferAvailable(extractor, inputBuffer);
+                        mediaCodec.queueInputBuffer(i, info.offset, info.size, info.presentationTimeUs, info.flags);
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                        listener.onDecoderError(e);
+                    }
                 }
 
                 @Override
                 public void onOutputBufferAvailable(@NonNull MediaCodec mediaCodec, int i, @NonNull MediaCodec.BufferInfo bufferInfo) {
-                    ByteBuffer outputBuffer = mediaCodec.getOutputBuffer(i);
-                    if (outputBuffer == null) return;
+                    try {
+                        ByteBuffer outputBuffer = mediaCodec.getOutputBuffer(i);
+                        if (outputBuffer == null) return;
 
-                    if (outputBuffer.limit() > 0) {
-                        SampleBuffer targetSampleBuffer = AudioDecoder.super.onOutputBufferAvailable(outputBuffer);
-                        AudioDecoder.this.listener.onAudioDataAvailable(targetSampleBuffer);
-                    } else {
-                        Log.w(TAG, "output buffer empty. Chance that silence was detected");
-                    }
+                        SampleBuffer targetSampleBuffer = null;
+                        if (outputBuffer.limit() > 0) {
+                            targetSampleBuffer = AudioDecoder.super.onOutputBufferAvailable(outputBuffer);
+                        } else {
+                            Log.w(TAG, "output buffer empty. Chance that silence was detected");
+                        }
+                        AudioDecoder.this.listener.onAudioDataAvailable(targetSampleBuffer,bufferInfo.flags);
 
-                    mediaCodec.releaseOutputBuffer(i, false);
+                        mediaCodec.releaseOutputBuffer(i, false);
 
-                    if (bufferInfo.flags == MediaCodec.BUFFER_FLAG_END_OF_STREAM) {
-                        listener.onDecoderFinish(true);
-                        stop();
+                        if (bufferInfo.flags == MediaCodec.BUFFER_FLAG_END_OF_STREAM) {
+                            listener.onDecoderFinish(true);
+                            stop();
+                        }
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                        listener.onDecoderError(e);
                     }
                 }
 
