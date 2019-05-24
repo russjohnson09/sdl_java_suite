@@ -596,8 +596,9 @@ public class AudioStreamManager extends BaseSubManager {
                                                     @Override
                                                     public void run() {
                                                         finish(queue.element().getCompletionListener(),isSuccess);
-
-                                                        queue.remove();
+                                                        synchronized (queue) {
+                                                            queue.remove();
+                                                        }
                                                         if (queue.size() > 0) {
                                                             startAudioStreamThread(null,false);
                                                         }
