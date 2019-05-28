@@ -370,17 +370,37 @@ public class AudioStreamManager extends BaseSubManager {
         BaseAudioDecoder decoder;
         AudioDecoderListener decoderListener = new AudioDecoderListener() {
             @Override
-            public void onAudioDataAvailable(SampleBuffer buffer,int flags) {
+            public void onAudioDataAvailable(ArrayList<SampleBuffer> sampleBufferList,int flags) {
                 if(mSendAudioStreamThread != null){
-                    mSendAudioStreamThread.addAudioData(new SendAudioBuffer(buffer,
-                            flags == MediaCodec.BUFFER_FLAG_END_OF_STREAM? SendAudioBuffer.DECODER_FINISH_SUCCESS: SendAudioBuffer.DECODER_NOT_FINISH));
+                    ArrayList<SendAudioBuffer> sendBufferList = new ArrayList<>();
+                    if(sampleBufferList == null){
+                        sendBufferList.add(
+                                new SendAudioBuffer(null, flags == MediaCodec.BUFFER_FLAG_END_OF_STREAM? SendAudioBuffer.DECODER_FINISH_SUCCESS: SendAudioBuffer.DECODER_NOT_FINISH)
+                        );
+                    } else {
+                        for(int i = 0 ; i < sampleBufferList.size() ;i++){
+                            SampleBuffer buffer = sampleBufferList.get(i);
+                            int iFlag = SendAudioBuffer.DECODER_NOT_FINISH;
+                            if(flags == MediaCodec.BUFFER_FLAG_END_OF_STREAM &&  sampleBufferList.size() == i+1){
+                                iFlag = SendAudioBuffer.DECODER_FINISH_SUCCESS;
+                            }
+                            sendBufferList.add(
+                                    new SendAudioBuffer(buffer, iFlag)
+                            );
+                        }
+                    }
+                    mSendAudioStreamThread.addAudioData(sendBufferList);
                 }
             }
 
             @Override
             public void onDecoderFinish(boolean success) {
                 if(mSendAudioStreamThread != null && !success){
-                    mSendAudioStreamThread.addAudioData(new SendAudioBuffer(null,SendAudioBuffer.DECODER_FINISH_FAILED));
+                    ArrayList<SendAudioBuffer> sendBufferList = new ArrayList<>();
+                    sendBufferList.add(
+                            new SendAudioBuffer(null, SendAudioBuffer.DECODER_FINISH_FAILED)
+                    );
+                    mSendAudioStreamThread.addAudioData(sendBufferList);
                 }
             }
 
@@ -621,7 +641,10 @@ public class AudioStreamManager extends BaseSubManager {
                                     startTime = System.currentTimeMillis();
 
                                 }
-                                mAudioBufferList.add( (SendAudioBuffer)msg.obj);
+                                ArrayList<SendAudioBuffer> sendBufferList = (ArrayList<SendAudioBuffer>)msg.obj;
+                                for(SendAudioBuffer buff: sendBufferList){
+                                    mAudioBufferList.add(buff);
+                                }
                                 break;
                             }
                             case MSG_TERMINATE: {
@@ -650,11 +673,11 @@ public class AudioStreamManager extends BaseSubManager {
             Looper.loop();
             Log.d(TAG, "Stopping SendAudioStreamThread");
         }
-        public void addAudioData(final SendAudioBuffer buffer){
-            if (mHandler != null) {
+        public void addAudioData(final  ArrayList<SendAudioBuffer> sendBufferList){
+            if (mHandler != null && sendBufferList != null && sendBufferList.size() > 0) {
                 Message msg = Message.obtain();
                 msg.what = MSG_ADD;
-                msg.obj = buffer;
+                msg.obj = sendBufferList;
                 mHandler.sendMessage(msg);
                 if(isFirst){
                     mHandler.sendMessage(mHandler.obtainMessage(MSG_TICK));

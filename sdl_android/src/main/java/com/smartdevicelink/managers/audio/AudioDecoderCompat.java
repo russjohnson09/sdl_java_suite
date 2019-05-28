@@ -13,6 +13,7 @@ import com.smartdevicelink.managers.audio.AudioStreamManager.SampleType;
 
 import java.lang.ref.WeakReference;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 
 /**
  * The audio decoder to decode a single audio file to PCM.
@@ -141,9 +142,9 @@ public class AudioDecoderCompat extends BaseAudioDecoder {
                         if ((outputBufferInfo.flags & MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0 && outputBufferInfo.size != 0) {
                             reference.decoder.releaseOutputBuffer(outputBuffersArrayIndex, false);
                         } else if (outputBuffer.limit() > 0) {
-                            sampleBuffer = reference.onOutputBufferAvailable(outputBuffer);
+                            ArrayList<SampleBuffer> sampleBufferList = reference.onOutputBufferAvailable(outputBuffer);
                             if (reference.listener != null) {
-                                reference.listener.onAudioDataAvailable(sampleBuffer, outputBufferInfo.flags);
+                                reference.listener.onAudioDataAvailable(sampleBufferList, outputBufferInfo.flags);
                             }
                             reference.decoder.releaseOutputBuffer(outputBuffersArrayIndex, false);
                         }
