@@ -11,6 +11,7 @@ import android.util.Log;
 import com.smartdevicelink.managers.audio.AudioStreamManager.SampleType;
 
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 
 /**
  * The audio decoder to decode a single audio file to PCM.
@@ -59,13 +60,13 @@ public class AudioDecoder extends BaseAudioDecoder {
                         ByteBuffer outputBuffer = mediaCodec.getOutputBuffer(i);
                         if (outputBuffer == null) return;
 
-                        SampleBuffer targetSampleBuffer = null;
+                        ArrayList<SampleBuffer> targetSampleBufferList = null;
                         if (outputBuffer.limit() > 0) {
-                            targetSampleBuffer = AudioDecoder.super.onOutputBufferAvailable(outputBuffer);
+                            targetSampleBufferList = AudioDecoder.super.onOutputBufferAvailable(outputBuffer);
                         } else {
                             Log.w(TAG, "output buffer empty. Chance that silence was detected");
                         }
-                        AudioDecoder.this.listener.onAudioDataAvailable(targetSampleBuffer,bufferInfo.flags);
+                        AudioDecoder.this.listener.onAudioDataAvailable(targetSampleBufferList,bufferInfo.flags);
 
                         mediaCodec.releaseOutputBuffer(i, false);
 

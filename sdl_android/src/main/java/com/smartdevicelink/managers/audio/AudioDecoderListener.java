@@ -1,5 +1,7 @@
 package com.smartdevicelink.managers.audio;
 
+import java.util.ArrayList;
+
 /**
  * An interface for the audio decoder classes.
  * The caller using the audio decoder will be
@@ -9,9 +11,9 @@ package com.smartdevicelink.managers.audio;
 public interface AudioDecoderListener {
     /**
      * Notifies that decoded audio data is available.
-     * @param sampleBuffer The sample buffer holding the decoded audio data.
+     * @param sampleBufferList The sample buffer holding the decoded audio data.
      */
-    void onAudioDataAvailable(SampleBuffer sampleBuffer, int flags);
+    void onAudioDataAvailable(ArrayList<SampleBuffer> sampleBufferList, int flags);
     /**
      * Notifies that the audio decoding is finished.
      * @param success Indicates whether audio decoding was successful or if an error occurred.

@@ -78,7 +78,8 @@ public class AudioStreamManager extends BaseSubManager {
 
     private SendAudioStreamThread mSendAudioStreamThread;
     private ArrayList<SendAudioBuffer> mAudioBufferList = null;
-
+    private long mEndTimeOfSendData = 0;
+    private DelayStartAudioHandler mDelayStartAudioHandler;
     // INTERNAL INTERFACE
 
     private final ISdlServiceListener serviceListener = new ISdlServiceListener() {
@@ -103,7 +104,11 @@ public class AudioStreamManager extends BaseSubManager {
             if (SessionType.PCM.equals(type)) {
                 serviceCompletionHandler.removeCallbacks(serviceCompletionTimeoutCallback);
 
-                session.stopAudioStream();
+                if (internalInterface.isConnected()) {
+                    session.stopAudioStream();
+                } else {
+                    Log.e(TAG, "onServiceEnded: not stopAudioStream() call ");
+                }
                 sdlAudioStream = null;
                 streamingStateMachine.transitionToState(StreamingStateMachine.NONE);
 
@@ -209,6 +214,10 @@ public class AudioStreamManager extends BaseSubManager {
 
     @Override
     public void dispose() {
+        mEndTimeOfSendData = 0;
+        if( mDelayStartAudioHandler != null){
+            mDelayStartAudioHandler.release();
+        }
         stopAudioStream(new CompletionListener() {
             @Override
             public void onComplete(boolean success) {
@@ -370,17 +379,37 @@ public class AudioStreamManager extends BaseSubManager {
         BaseAudioDecoder decoder;
         AudioDecoderListener decoderListener = new AudioDecoderListener() {
             @Override
-            public void onAudioDataAvailable(SampleBuffer buffer,int flags) {
+            public void onAudioDataAvailable(ArrayList<SampleBuffer> sampleBufferList,int flags) {
                 if(mSendAudioStreamThread != null){
-                    mSendAudioStreamThread.addAudioData(new SendAudioBuffer(buffer,
-                            flags == MediaCodec.BUFFER_FLAG_END_OF_STREAM? SendAudioBuffer.DECODER_FINISH_SUCCESS: SendAudioBuffer.DECODER_NOT_FINISH));
+                    ArrayList<SendAudioBuffer> sendBufferList = new ArrayList<>();
+                    if(sampleBufferList == null){
+                        sendBufferList.add(
+                                new SendAudioBuffer(null, flags == MediaCodec.BUFFER_FLAG_END_OF_STREAM? SendAudioBuffer.DECODER_FINISH_SUCCESS: SendAudioBuffer.DECODER_NOT_FINISH)
+                        );
+                    } else {
+                        for(int i = 0 ; i < sampleBufferList.size() ;i++){
+                            SampleBuffer buffer = sampleBufferList.get(i);
+                            int iFlag = SendAudioBuffer.DECODER_NOT_FINISH;
+                            if(flags == MediaCodec.BUFFER_FLAG_END_OF_STREAM &&  sampleBufferList.size() == i+1){
+                                iFlag = SendAudioBuffer.DECODER_FINISH_SUCCESS;
+                            }
+                            sendBufferList.add(
+                                    new SendAudioBuffer(buffer, iFlag)
+                            );
+                        }
+                    }
+                    mSendAudioStreamThread.addAudioData(sendBufferList);
                 }
             }
 
             @Override
             public void onDecoderFinish(boolean success) {
                 if(mSendAudioStreamThread != null && !success){
-                    mSendAudioStreamThread.addAudioData(new SendAudioBuffer(null,SendAudioBuffer.DECODER_FINISH_FAILED));
+                    ArrayList<SendAudioBuffer> sendBufferList = new ArrayList<>();
+                    sendBufferList.add(
+                            new SendAudioBuffer(null, SendAudioBuffer.DECODER_FINISH_FAILED)
+                    );
+                    mSendAudioStreamThread.addAudioData(sendBufferList);
                 }
             }
 
@@ -396,7 +425,7 @@ public class AudioStreamManager extends BaseSubManager {
             // this BaseAudioDecoder subclass uses methods deprecated with api 21
             decoder = new AudioDecoderCompat(audioSource, context.get(), sdlSampleRate, sdlSampleType, decoderListener);
         }
-        startAudioStreamThread(new Decoder(decoder,completionListener),interrupt);
+        startAudioStreamThread(new Decoder(decoder,completionListener,interrupt));
     }
 
     @Override
@@ -455,9 +484,26 @@ public class AudioStreamManager extends BaseSubManager {
         return aptCapabilities;
     }
 
-    private void startAudioStreamThread(final Decoder _decoder,final Boolean _interrupt){
+    private void startAudioStreamThread(final Decoder _decoder){
         Log.d(TAG, "startAudioStreamThread() queue.size():" + queue.size());
-        if(_interrupt){
+        if (streamingStateMachine.getState() != StreamingStateMachine.STARTED) {
+            if( mDelayStartAudioHandler != null){
+                mDelayStartAudioHandler.release();
+            }
+            finish(null,true);
+            synchronized (queue) {
+                while (queue.size() > 0){
+                    queue.element().getAudioDecoder().stop();
+                    queue.remove();
+                }
+            }
+            return;
+        }
+        if(_decoder != null && _decoder.isInterrupt()){
+            if( mDelayStartAudioHandler == null){
+                mDelayStartAudioHandler = new DelayStartAudioHandler();
+            }
+            boolean isDelayStart = mDelayStartAudioHandler.isStartAudioDelay(_decoder);
             //Stop AS data
             finish(null,true);
             synchronized (queue) {
@@ -465,6 +511,9 @@ public class AudioStreamManager extends BaseSubManager {
                     queue.element().getAudioDecoder().stop();
                     queue.remove();
                 }
+            }
+            if(isDelayStart){
+                return;
             }
         }
         if(mSendAudioStreamThread == null){
@@ -495,19 +544,32 @@ public class AudioStreamManager extends BaseSubManager {
         }
     }
 
+    private long getDelayStartAudioTime(){
+        long nowTime = System.currentTimeMillis();
+        long lDelay = mEndTimeOfSendData - nowTime;
+        if(lDelay < 0){
+            lDelay = 0;
+        }
+        return lDelay;
+    }
+
     private class Decoder {
         private BaseAudioDecoder mAudioDecoder;
         private CompletionListener mCompletionListener;
-
-        public Decoder(BaseAudioDecoder decoder,CompletionListener listener){
+        private boolean mInterrupt;
+        public Decoder(BaseAudioDecoder decoder,CompletionListener listener,boolean interrupt){
             mAudioDecoder = decoder;
             mCompletionListener = listener;
+            mInterrupt = interrupt;
         }
         public BaseAudioDecoder getAudioDecoder(){
             return mAudioDecoder;
         }
         public CompletionListener getCompletionListener(){
             return mCompletionListener;
+        }
+        public boolean isInterrupt(){
+            return mInterrupt;
         }
     }
 
@@ -579,6 +641,7 @@ public class AudioStreamManager extends BaseSubManager {
                                                 long nowTime = System.currentTimeMillis();
                                                 long AllowableTime = (nowTime - startTime + 1000) * 1000;
                                                 if( AllowableTime  >  sBuffer.getPresentationTimeUs()){
+                                                    mEndTimeOfSendData = startTime + ( sBuffer.getPresentationTimeUs()/1000);
                                                     sdlAudioStream.sendAudio(sBuffer.getByteBuffer(), sBuffer.getPresentationTimeUs());
                                                 } else {
                                                     //Delay data transmission
@@ -592,17 +655,19 @@ public class AudioStreamManager extends BaseSubManager {
                                                 final boolean isSuccess = sBuffer.getFinishFlag() == SendAudioBuffer.DECODER_FINISH_SUCCESS;
 
                                                 Handler handler = new Handler(Looper.getMainLooper());
-                                                handler.post(new Runnable() {
+                                                long lDelay = getDelayStartAudioTime();
+                                                handler.postDelayed(new Runnable() {
                                                     @Override
                                                     public void run() {
                                                         finish(queue.element().getCompletionListener(),isSuccess);
-
-                                                        queue.remove();
+                                                        synchronized (queue) {
+                                                            queue.remove();
+                                                        }
                                                         if (queue.size() > 0) {
-                                                            startAudioStreamThread(null,false);
+                                                            startAudioStreamThread(null);
                                                         }
                                                     }
-                                                });
+                                                },lDelay);
                                                 return;
                                             }
                                         } else {
@@ -620,7 +685,10 @@ public class AudioStreamManager extends BaseSubManager {
                                     startTime = System.currentTimeMillis();
 
                                 }
-                                mAudioBufferList.add( (SendAudioBuffer)msg.obj);
+                                ArrayList<SendAudioBuffer> sendBufferList = (ArrayList<SendAudioBuffer>)msg.obj;
+                                for(SendAudioBuffer buff: sendBufferList){
+                                    mAudioBufferList.add(buff);
+                                }
                                 break;
                             }
                             case MSG_TERMINATE: {
@@ -649,11 +717,12 @@ public class AudioStreamManager extends BaseSubManager {
             Looper.loop();
             Log.d(TAG, "Stopping SendAudioStreamThread");
         }
-        public void addAudioData(final SendAudioBuffer buffer){
-            if (mHandler != null) {
+
+        public void addAudioData(final  ArrayList<SendAudioBuffer> sendBufferList){
+            if (mHandler != null && sendBufferList != null && sendBufferList.size() > 0) {
                 Message msg = Message.obtain();
                 msg.what = MSG_ADD;
-                msg.obj = buffer;
+                msg.obj = sendBufferList;
                 mHandler.sendMessage(msg);
                 if(isFirst){
                     mHandler.sendMessage(mHandler.obtainMessage(MSG_TICK));
@@ -663,9 +732,80 @@ public class AudioStreamManager extends BaseSubManager {
                 Log.d(TAG, "addAudioData mHandler is null");
             }
         }
+
         public void stopAs(){
             if (mHandler != null) {
                 mHandler.sendMessage(mHandler.obtainMessage(MSG_TERMINATE));
+            }
+        }
+    }
+
+    private class DelayStartAudioHandler extends Handler {
+        boolean mIsPostSending;
+        private Runnable mRunnable;
+        private Queue<Decoder> mQueue;
+
+        public DelayStartAudioHandler(){
+            mQueue = new LinkedList<>();
+            mIsPostSending = false;
+            mRunnable = new Runnable() {
+                @Override
+                public void run() {
+                    mIsPostSending = false;
+                    Decoder decoder;
+                    synchronized (mQueue) {
+                        if(mQueue.size() < 1){
+                            Log.e(TAG, "DelayStartAudioHandler() Runnable() mQueue size:0");
+                            return;
+                        }
+                        decoder = mQueue.element();
+                        mQueue.remove();
+                        if(decoder != null){
+                            if(decoder.isInterrupt()){
+                                Log.d(TAG, "delete request Queue:" + mQueue.size());
+                                while (mQueue.size() > 0){
+                                    mQueue.remove();
+                                }
+                            }
+                        }
+                    }
+                    if(decoder != null){
+                        startAudioStreamThread(decoder);
+                    }
+                }
+            };
+        }
+        public boolean isStartAudioDelay(Decoder decoder){
+            if(decoder == null){
+                return false;
+            }
+            long lDelay = getDelayStartAudioTime();
+            if(lDelay == 0){
+                return false;
+            }
+            if(decoder.isInterrupt()){
+                synchronized (mQueue) {
+                    if(mQueue.size() > 0){
+                        Log.d(TAG, "isStartAudioDelay() delete Queue:" + mQueue.size());
+                    }
+                    while (mQueue.size() > 0){
+                        mQueue.remove();
+                    }
+                }
+                mQueue.add(decoder);
+            }
+            if(!mIsPostSending){
+                postDelayed(mRunnable,lDelay);
+                mIsPostSending = true;
+            }
+            Log.d(TAG, "isStartAudioDelay() Need for delayed processing");
+            return true;
+        }
+        public void release(){
+            synchronized (mQueue) {
+                while (mQueue.size() > 0){
+                    mQueue.remove();
+                }
             }
         }
     }
