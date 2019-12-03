@@ -306,6 +306,7 @@ public class SdlManager extends BaseSdlManager{
 
 	@Override
 	protected void initialize(){
+		System.out.println("SdlManager.initialize initialize SdlManager");
 		// Instantiate sub managers
 		this.permissionManager = new PermissionManager(_internalInterface);
 		this.fileManager = new FileManager(_internalInterface, context);
@@ -318,10 +319,17 @@ public class SdlManager extends BaseSdlManager{
 		} else {
 			this.videoStreamManager = null;
 		}
+		//if type is media we do not allow an audio stream only naviagation and projection.
 		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN
 				&& (getAppTypes().contains(AppHMIType.NAVIGATION) || getAppTypes().contains(AppHMIType.PROJECTION)) ) {
 			this.audioStreamManager = new AudioStreamManager(_internalInterface, context);
 		} else {
+			System.out.println("SdlManager.initialize audioStreamManager not supported");
+			System.out.println("SdlManager.initialize Version: " + Build.VERSION.SDK_INT);
+			System.out.println("SdlManager.initialize Minimum Version: " + Build.VERSION_CODES.JELLY_BEAN);
+			System.out.println("SdlManager.initialize App Types: ",getAppTypes());
+			System.out.println(getAppTypes());
+
 			this.audioStreamManager = null;
 		}
 
